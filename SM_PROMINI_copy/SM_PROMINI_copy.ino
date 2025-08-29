@@ -9,6 +9,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <ZMPT101B.h>
 #include <INA226.h>
+#include <IRremote.h>
 
 INA226 INA(0x44);
 
@@ -23,6 +24,12 @@ ZMPT101B voltageSensor(A2, 50.0);
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 #define OFFSET 2.5  // Midpoint voltage (2.5V for 5V supply)
+
+int RECV_PIN = 9;         // IR receiver connected to D9
+IRrecv irrecv(RECV_PIN);  // Create IR receiver object
+String irCode = "o";
+bool flag = true;
+int irCount = 0;
 
 unsigned long lastSensorRead = 0;  // Stores the last time the sensor was read
 const int sensorInterval = 1000;   // Read sensor every 100ms
@@ -39,6 +46,8 @@ boolean effect2 = false;
 boolean effect3 = false;
 boolean effect4 = false;
 
+
+
 void setup() {
   strip.begin();
   Serial.begin(9600);
@@ -54,7 +63,8 @@ void setup() {
   }
 
   INA.setMaxCurrentShunt(6.0, 0.0025);  // 5A max, 0.1 ohm shunt
-
+  irrecv.enableIRIn();
+  //pinMode(RECV_PIN, INPUT);
   //strip.setBrightness(150); // 0 to 255
   strip.show();  // Clear LEDs
   digitalWrite(13, LOW);
@@ -70,7 +80,28 @@ void loop() {
 
     float voltageBAT = INA.getBusVoltage();  // Volts
     float current = INA.getCurrent();        // Amps
-    float power   = INA.getPower();        // W 
+    float power = INA.getPower();            // W
+
+    if (!flag) {
+      if (irrecv.decode()) {
+        if (irCount < 4){
+          irCount++;
+        }
+        irrecv.resume();
+      }
+
+      else {
+        irCount = 0;
+      }
+    }
+
+    if(irCount >= 3){
+      irCode = "i";
+    }
+    else{
+      irCode = "o";
+    }
+
 
     Serial.print(voltage);  // AC 230v
     Serial.print(",");
@@ -82,9 +113,12 @@ void loop() {
     Serial.print(",");
     Serial.print(power);  // main bat power (W)
     Serial.print(",");
-    Serial.println(analogRead(A1));  // Rain sensor
+    Serial.print(analogRead(A1));  // Rain sensor
+    Serial.print(",");
+    Serial.println(irCode);  // ir sensor
     digitalWrite(13, HIGH);
     delay(5);
+    flag = false;
   }
 
 

@@ -9,6 +9,7 @@
 const char* SoftVer = "Software 2.8.1";
 ////////////////////TEST MODE///////////////////
 bool testMode = false;
+bool safetyMode = true;
 ////////////////////////////////////////////////
 
 
@@ -36,7 +37,6 @@ bool testMode = false;
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 #define SCREEN_ADDRESS 0x3C
-
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -110,6 +110,8 @@ unsigned long resetCounter = 0;
 
 bool flag1 = false;
 bool flag3 = false;
+bool flag4 = false;
+bool flag5 = false;
 bool toggleState = false;
 bool pirPreviouslyDetected = false;
 
@@ -120,6 +122,7 @@ int currentDisplay = 0;              // Track which display is active
 unsigned long lastDHTReadTime = 0;       // Store last read time
 const unsigned long dhtInterval = 2000;  // 2-second interval
 
+String irSensor = "o";
 float VoltSensor = 0;
 float AmpSensor = 0;
 float powerW = 0;
@@ -139,17 +142,28 @@ float batteryVoltage_main = 0;
 int rainSensor = 1023;
 int rainDetectCount = 0;
 
-int systemTempCount = 0;
-int batteryTempCount = 0;
-int envTCount = 0;
-int voltHighCount = 0;
-int voltLowCount = 0;
-int batteryMainHighCount = 0;
-int batteryMainLowCount = 0;
-int batterySysHighCount = 0;
-int batterySysLowCount = 0;
-int fireDetectionCount = 0;
-int rainCounter = 0;
+bool sFlag1 = false;
+bool sFlag2 = false;
+bool sFlag3 = false;
+bool sFlag4 = false;
+bool sFlag5 = false;
+bool sFlag6 = false;
+bool sFlag7 = false;
+bool sFlag8 = false;
+bool sFlag9 = false;
+bool sFlag10 = false;
+
+long systemTempCount = 0;
+long batteryTempCount = 0;
+long envTCount = 0;
+long voltHighCount = 0;
+long voltLowCount = 0;
+long batteryMainHighCount = 0;
+long batteryMainLowCount = 0;
+long batterySysHighCount = 0;
+long batterySysLowCount = 0;
+long fireDetectionCount = 0;
+long rainCounter = 0;
 
 float systemTemp = 0;
 float batteryTemp = 0;
@@ -165,7 +179,7 @@ bool cmd_testPir2 = false;
 #define insidePir 13       // esp pin
 #define outsidePir_top 12  // esp pin
 #define outsidePir_bot 11  //esp pin
-#define alarm 19           // esp pin
+#define alarm 2            // pcf
 #define fan 3              // pcf pin
 #define lightninProtect 6  //pcf
 #define pwrCut 7           // pcf
@@ -189,6 +203,12 @@ void LedAllOff() {
   ledcWrite(livingCh, 0);
   ledcWrite(diningCh, 0);
   ledcWrite(kitchenCh, 0);
+
+  Blynk.virtualWrite(V1, 0);
+  Blynk.virtualWrite(V6, 0);
+  Blynk.virtualWrite(V7, 0);
+  Blynk.virtualWrite(V4, 0);
+  Blynk.virtualWrite(V5, 0);
 }
 
 void setup() {
@@ -273,6 +293,8 @@ void setup() {
   rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 200));  // Blue ON
   rgbLed.show();
 
+  esp_reset_reason_t reason = esp_reset_reason();
+  Blynk.virtualWrite(V2, reason);
   Blynk.virtualWrite(V2, "System Starting...");
 
   if (!testMode) {
@@ -313,12 +335,11 @@ void setup() {
   ledcSetup(kitchenCh, freq, resolution);
   ledcAttachPin(kitchenPin, kitchenCh);
 
-
-  pinMode(alarm, OUTPUT);
   pinMode(insidePir, INPUT);
   pinMode(outsidePir_top, INPUT);
   pinMode(espEnable, INPUT);
 
+  pcf1.pinMode(alarm, OUTPUT);
   pcf1.pinMode(rf1, OUTPUT);
   pcf1.pinMode(rf2, OUTPUT);
   pcf1.pinMode(rf3, OUTPUT);
@@ -333,7 +354,7 @@ void setup() {
   pcf1.digitalWrite(lightninProtect, HIGH);
   pcf1.digitalWrite(pwrCut, HIGH);
   pcf1.digitalWrite(fan, LOW);
-  digitalWrite(alarm, LOW);
+  pcf1.digitalWrite(alarm, LOW);
 
   LedAllOff();
 
@@ -345,6 +366,7 @@ void setup() {
   pcf1.digitalWrite(RF_CH, HIGH);
   delay(300);
   pcf1.digitalWrite(RF_CH, LOW);
+  LedAllOff();
 
   // --- Final display screen ---
   if (!testMode) {
@@ -362,12 +384,22 @@ void setup() {
     display.print(SoftVer);
 
     display.display();
+    Serial_Read();
     delay(5000);
     rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
     rgbLed.show();
     display.clearDisplay();
     display.display();
   }
+  pcf1.digitalWrite(rf1, HIGH);
+  pcf1.digitalWrite(rf2, HIGH);
+  pcf1.digitalWrite(rf3, HIGH);
+  pcf1.digitalWrite(rf4, HIGH);
+  delay(300);
+  pcf1.digitalWrite(RF_CH, HIGH);
+  delay(300);
+  pcf1.digitalWrite(RF_CH, LOW);
+  LedAllOff();
 
   delay(100);
 }
@@ -384,19 +416,37 @@ void loop() {
 
   Blynk.virtualWrite(V8, batteryVoltage_main);  // gauge
 
+  if (resetCounter > 600000) {
+    Blynk.virtualWrite(V2, resetCounter);
+  }
+
   //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
   if (digitalRead(espEnable)) {
+    Serial_Read();   // read promini serial data
     x_Mode();        // the room x mode
     Securty_mode();  // activate with button, all pir's working at same time, alarm lock off
-    saftySys();      // checking all the temp sensors and voltage sensors if any problems send notification and cmd lines
     autoLight();     // automatic turn on lights when house main power off at 6PM to 10PM
     readTemp();      // read all the temp sensors and filter output values
     //autoSecurty(); // pir sensors at out side automatic work and notifications
     midNightAutoLights();  // automatic turn on lights when house main power is off at 10PM to 5AM (only when inside pir detects someone)
-    Serial_Read();         // read promini serial data
     irSwitch();
+
+    if (safetyMode) {
+      saftySys();  // checking all the temp sensors and voltage sensors if any problems send notification and cmd lines
+      if (flag3) {
+        Blynk.virtualWrite(V2, "Safety System Online");
+        flag3 = false;
+      }
+
+    } else {
+      if (!flag3) {
+        Blynk.virtualWrite(V2, "Safety System Shut Down!");
+        flag3 = true;
+      }
+    }
+
 
     //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -443,7 +493,7 @@ void loop() {
   if (testV2cmd) {  // for testing values cmd printing command for active "test"
     //Blynk.virtualWrite(V2, "rain count:");
     //Blynk.virtualWrite(V2, rainCounter);
-    Blynk.virtualWrite(V2, "test");
+    Blynk.virtualWrite(V2, irSensor);
   }
 
 
@@ -481,7 +531,7 @@ void loop() {
 
 
   if (alarmCutOff) {
-    digitalWrite(alarm, LOW);
+    pcf1.digitalWrite(alarm, LOW);
   }
 
   Blynk.virtualWrite(V10, envT);  // gauge
@@ -560,38 +610,29 @@ void loop() {
   delay(300);
 }  // ================================================================================================= loop end ==================================================================
 
+
+
 void irSwitch() {
-  // String irCode = "";
-  // static int irCount = 0;  // Retains value across calls
 
-  // if (IrReceiver.decode()) {
-  //   irCode = String(IrReceiver.decodedIRData.decodedRawData, HEX);
-  //   irCode.toLowerCase();
-  //   //Blynk.virtualWrite(V2, irCode);
-  //   irCount = 2;
-  //   IrReceiver.resume();
-  // }
+  if (irSensor == "i") {
+    if (flag5) {
+      pcf1.digitalWrite(RF_CH, HIGH);
+      pcf1.digitalWrite(rf3, LOW);
+      delay(1000);
+      pcf1.digitalWrite(RF_CH, LOW);
+      flag5 = false;
+    }
+  }
 
-  // if (irCount > 0) {
-  //   irEn = true;
-  //   pcf1.digitalWrite(RF_CH, HIGH);
-  //   pcf1.digitalWrite(rf3, LOW);
-  //   delay(1000);
-  //   pcf1.digitalWrite(RF_CH, LOW);
-  // }
-
-  // else {
-  //   if (irEn) {
-  //   pcf1.digitalWrite(RF_CH, HIGH);
-  //   pcf1.digitalWrite(rf3, HIGH);
-  //   delay(1000);
-  //   pcf1.digitalWrite(RF_CH, LOW);
-  //     irEn = false;
-  //   }
-  // }
-
-  // // Countdown
-  // if (irCount > 0) irCount--;
+  if (irSensor == "o") {
+    if (!flag5) {
+      pcf1.digitalWrite(RF_CH, HIGH);
+      pcf1.digitalWrite(rf3, HIGH);
+      delay(1000);
+      pcf1.digitalWrite(RF_CH, LOW);
+      flag5 = true;
+    }
+  }
 }
 
 
@@ -605,14 +646,17 @@ void Serial_Read() {
     int commaIndex3 = data.indexOf(',', commaIndex2 + 1);
     int commaIndex4 = data.indexOf(',', commaIndex3 + 1);
     int commaIndex5 = data.indexOf(',', commaIndex4 + 1);
+    int commaIndex6 = data.indexOf(',', commaIndex5 + 1);
 
-    if (commaIndex1 != -1 && commaIndex2 != -1 && commaIndex3 != -1 && commaIndex4 != -1 && commaIndex5 != -1) {
+    if (commaIndex1 != -1 && commaIndex2 != -1 && commaIndex3 != -1 && commaIndex4 != -1 && commaIndex5 != -1 && commaIndex6 != -1) {
+
       String value1 = data.substring(0, commaIndex1);
       String value2 = data.substring(commaIndex1 + 1, commaIndex2);
       String value3 = data.substring(commaIndex2 + 1, commaIndex3);
       String value4 = data.substring(commaIndex3 + 1, commaIndex4);
       String value5 = data.substring(commaIndex4 + 1, commaIndex5);
-      String value6 = data.substring(commaIndex5 + 1);
+      String value6 = data.substring(commaIndex5 + 1, commaIndex6);
+      String value7 = data.substring(commaIndex6 + 1);
 
       VoltSensor = value1.toFloat();
       AmpSensor = value2.toFloat();
@@ -620,6 +664,7 @@ void Serial_Read() {
       batteryVoltage_main = value4.toFloat();
       powerW = value5.toFloat();
       rainSensor = value6.toInt();
+      irSensor = value7;
     }
 
     batteryVoltage_sys = microControllVolt_analog * (maxSystemBatteryVoltage / maxADCValue);
@@ -633,7 +678,7 @@ void readTemp() {
 
     float temp1 = dht2.readTemperature();
     delay(10);
-    float temp2 = 30.1;  //dht3.readTemperature();
+    float temp2 = dht3.readTemperature();
     delay(10);
     float temp3 = dht.readTemperature();
     envH = dht.readHumidity();
@@ -698,6 +743,7 @@ void midNightAutoLights() {  // automatic turn on lights when house main power i
     if (pirCounter > 1) {
       rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));  //green off
       rgbLed.show();
+      //Blynk.virtualWrite(V2, pirCounter);
     } else {
       rgbLed.setPixelColor(0, rgbLed.Color(0, 10, 0));  // green on
       rgbLed.show();
@@ -790,143 +836,240 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
     pcf1.digitalWrite(fan, LOW);
   }
 
-  if (VoltSensor > 250) {
-    voltHighCount++;
-    if (voltHighCount >= 4) {
-      pcf1.digitalWrite(pwrCut, LOW);
-      delay(1000);
-      pcf1.digitalWrite(pwrCut, HIGH);
-      Blynk.logEvent("volts_amps_sensors", "Main 230V is too high!");
+  avaTemp = 0;
+  //////////////////////////////////////////////////////////////////////////////////////////
+  if (VoltSensor > 255) {
+    if (voltHighCount < 10) {
+      voltHighCount++;
+    }
+
+    if (voltHighCount >= 8) {
+      if (!sFlag1) {
+        pcf1.digitalWrite(pwrCut, LOW);
+        delay(1000);
+        pcf1.digitalWrite(pwrCut, HIGH);
+        delay(500);
+        pcf1.digitalWrite(lightninProtect, LOW);
+        Blynk.logEvent("volts_amps_sensors", "Main 230V is too high!");
+        sFlag1 = true;
+      }
+
       Blynk.virtualWrite(V2, "Main 230V is too high! Count: " + String(voltHighCount));
+    }
+  } else {
+    if (sFlag1) {
       voltHighCount = 0;
+      pcf1.digitalWrite(lightninProtect, HIGH);
+      Blynk.logEvent("volts_amps_sensors", "Main 230V Back in Stable");
+      sFlag1 = false;
     }
-  } else {
-    voltHighCount = 0;
   }
-
+  ///////////////////////////////////////////////////////////////////////////////////
   if (VoltSensor > 90 && VoltSensor < 220) {
-    voltLowCount++;
-    if (voltLowCount >= 5) {
-      pcf1.digitalWrite(6, LOW);
-      Blynk.logEvent("volts_amps_sensors", "Main 230V is too low!");
-      Blynk.virtualWrite(V2, "Main 230V is too Low! Count: " + String(voltLowCount));
-      voltLowCount = 0;
-    } else {
-      pcf1.digitalWrite(6, HIGH);
+
+    if (voltLowCount < 10) {
+      voltLowCount++;
     }
-  } else {
-    voltLowCount = 0;
+
+    if (voltLowCount >= 8) {
+      if (!sFlag2) {
+        pcf1.digitalWrite(lightninProtect, LOW);
+        Blynk.logEvent("volts_amps_sensors", "Main 230V is too low!");
+        sFlag2 = true;
+      }
+      Blynk.virtualWrite(V2, "Main 230V is too Low! Count: " + String(voltLowCount));
+    }
   }
 
+  else {
+    if (sFlag2) {
+      pcf1.digitalWrite(lightninProtect, HIGH);
+      Blynk.logEvent("volts_amps_sensors", "Main 230V Back in Stable");
+      voltLowCount = 0;
+      sFlag2 = false;
+    }
+  }
+  //////////////////////////////////////////////////////////////////////////////////
 
   if (batteryVoltage_main > 17) {
-    batteryMainHighCount++;
-    if (batteryMainHighCount >= 20) {
-      pcf1.digitalWrite(lightninProtect, LOW);
-      Blynk.logEvent("volts_amps_sensors", "Main battery is overcharging!");
-      LedAllOff();
-      Blynk.virtualWrite(V2, "Main battery is overcharging! Count: " + String(batteryMainHighCount));
-      batteryMainHighCount = 0;
-    } else {
-      pcf1.digitalWrite(lightninProtect, HIGH);
+    if (batteryMainHighCount < 10) {
+      batteryMainHighCount++;
     }
+
+    if (batteryMainHighCount >= 6) {
+      if (!sFlag3) {
+        pcf1.digitalWrite(lightninProtect, LOW);
+        Blynk.logEvent("volts_amps_sensors", "Main battery is overcharging!");
+        LedAllOff();
+        sFlag3 = true;
+      }
+      Blynk.virtualWrite(V2, "Main battery is overcharging! Count: " + String(batteryMainHighCount));
+    }
+
   } else {
-    batteryMainHighCount = 0;
+    if (sFlag3) {
+      batteryMainHighCount = 0;
+      pcf1.digitalWrite(lightninProtect, HIGH);
+      Blynk.logEvent("volts_amps_sensors", "Main battery voltage is now stable");
+      sFlag3 = false;
+    }
   }
+
+  /////////////////////////////////////////////////////////////////////////////////////////
 
   if (batteryVoltage_main < 12) {
-    batteryMainLowCount++;
+    if (batteryMainLowCount < 10) {
+      batteryMainLowCount++;
+    }
+
     if (batteryMainLowCount >= 5) {
-      Blynk.logEvent("volts_amps_sensors", "Main battery voltage is too low!");
-      LedAllOff();
+      if (!sFlag4) {
+        Blynk.logEvent("volts_amps_sensors", "Main battery voltage is too low!");
+        LedAllOff();
+        sFlag4 = true;
+      }
       Blynk.virtualWrite(V2, "Main battery voltage is too low! Count: " + String(batteryMainLowCount));
-      batteryMainLowCount = 0;
     }
   } else {
-    batteryMainLowCount = 0;
+    if (sFlag4) {
+      Blynk.logEvent("volts_amps_sensors", "Main battery voltage is now stable");
+      batteryMainLowCount = 0;
+      sFlag4 = false;
+    }
   }
+
+  ///////////////////////////////////////////////////////////////////////////////////
 
   if (batteryVoltage_sys > 6) {
-    batterySysHighCount++;
-    if (batterySysHighCount >= 5) {
-      pcf1.digitalWrite(lightninProtect, LOW);
-      Blynk.logEvent("volts_amps_sensors", "System voltage is too high!");
-      LedAllOff();
-      Blynk.virtualWrite(V2, "System voltage is too high! Count: " + String(batterySysHighCount));
-      batterySysHighCount = 0;
-    } else {
-      pcf1.digitalWrite(lightninProtect, HIGH);
+    if (batterySysHighCount < 10) {
+      batterySysHighCount++;
     }
-
+    if (batterySysHighCount >= 5) {
+      if (!sFlag5) {
+        pcf1.digitalWrite(lightninProtect, LOW);
+        Blynk.logEvent("volts_amps_sensors", "System voltage is too high!");
+        LedAllOff();
+        sFlag5 = true;
+      }
+      Blynk.virtualWrite(V2, "System voltage is too high! Count: " + String(batterySysHighCount));
+    }
   } else {
-    batterySysHighCount = 0;
+    if (sFlag5) {
+      pcf1.digitalWrite(lightninProtect, HIGH);
+      Blynk.logEvent("volts_amps_sensors", "System voltage now stable");
+      batterySysHighCount = 0;
+      sFlag5 = false;
+    }
   }
 
+  ////////////////////////////////////////////////////////////////////////////////////
 
   if (batteryVoltage_sys < 3.2) {
-    batterySysLowCount++;
+    if (batterySysLowCount < 10) {
+      batterySysLowCount++;
+    }
     if (batterySysLowCount >= 5) {
-      Blynk.logEvent("volts_amps_sensors", "System voltage is too low!");
-      Blynk.virtualWrite(V2, "System voltage is too low! Count: " + String(batterySysLowCount));
-      batterySysLowCount = 0;
+      if (!sFlag6) {
+        Blynk.logEvent("volts_amps_sensors", "System voltage is too low!");
+        Blynk.virtualWrite(V2, "System voltage is too low! Count: " + String(batterySysLowCount));
+        sFlag6 = true;
+      }
     }
   } else {
-    batterySysLowCount = 0;
+    if (sFlag6) {
+      Blynk.logEvent("volts_amps_sensors", "System voltage is now stable");
+      batterySysLowCount = 0;
+      sFlag6 = false;
+    }
   }
-
+  ////////////////////////////////////////////////////////////////////////////////////////
 
   if (systemTemp > 39) {
-    systemTempCount++;
+    if (systemTempCount < 10) {
+      systemTempCount++;
+    }
     if (systemTempCount >= 5) {
-      Blynk.logEvent("temp", "System Temp is too high!");
+      if (!sFlag7) {
+        Blynk.logEvent("temp", "System Temp is too high!");
+        LedAllOff();
+        sFlag7 = true;
+      }
       Blynk.virtualWrite(V2, "System Temp is too high! Count: " + String(systemTempCount));
-      LedAllOff();
-      systemTempCount = 0;
     }
   } else {
-    systemTempCount = 0;
+    if (sFlag7) {
+      Blynk.logEvent("temp", "System Temp is back in normal");
+      systemTempCount = 0;
+      sFlag7 = false;
+    }
   }
+
+  ////////////////////////////////////////////////////////////////////////////////////////////
 
   if (batteryTemp > 36) {
-    batteryTempCount++;
+    if (batteryTempCount < 10) {
+      batteryTempCount++;
+    }
     if (batteryTempCount >= 5) {
-      Blynk.logEvent("temp", "Battery Temp is too high!");
+      if (!sFlag8) {
+        Blynk.logEvent("temp", "Battery Temp is too high!");
+        LedAllOff();
+        sFlag8 = true;
+      }
       Blynk.virtualWrite(V2, "Battery Temp is too high! Count: " + String(batteryTempCount));
-      LedAllOff();
-      batteryTempCount = 0;
     }
   } else {
-    batteryTempCount = 0;
+    if (sFlag7) {
+      Blynk.logEvent("temp", "Battery Temp back in normal");
+      batteryTempCount = 0;
+      sFlag7 = false;
+    }
   }
+
+  ////////////////////////////////////////////////////////////////////////////////////////////
 
   if (envT > 37) {
-    envTCount++;
-    if (envTCount >= 10) {
-      Blynk.logEvent("temp", "Power Supply Temp is too high!");
+    if (envTCount < 10) {
+      envTCount++;
+    }
+    if (envTCount >= 6) {
+      if (!sFlag9) {
+        Blynk.logEvent("temp", "Power Supply Temp is too high!");
+        LedAllOff();
+        sFlag9 = true;
+      }
       Blynk.virtualWrite(V2, "Power Supply Temp is too high! Count: " + String(envTCount));
-      LedAllOff();
+    }
+  } else {
+    if (sFlag9) {
+      Blynk.logEvent("temp", "Power Supply Temp is back in normal");
       envTCount = 0;
+      sFlag9 = false;
     }
-  } else {
-    envTCount = 0;
   }
+  ///////////////////////////////////////////////////////////////////////////////////////////
   if (systemTemp > 40 || batteryTemp > 45 || envT > 40) {
-    fireDetectionCount++;
-    if (fireDetectionCount >= 20) {
-      Blynk.logEvent("temp", "🔥 Fire Detected!!!");
+    if (fireDetectionCount < 20) {
+      fireDetectionCount++;
+    }
+    if (fireDetectionCount >= 18) {
+      if (!sFlag10) {
+        Blynk.logEvent("temp", "🔥 Fire Detected!!!");
+        pcf1.digitalWrite(pwrCut, LOW);
+        delay(1000);
+        pcf1.digitalWrite(pwrCut, HIGH);
+        LedAllOff();
+        sFlag10 = true;
+      }
       Blynk.virtualWrite(V2, "🔥 Fire Detected!!! Count: " + String(fireDetectionCount));
-      delay(1000);
-      pcf1.digitalWrite(pwrCut, LOW);
-      delay(1000);
-      pcf1.digitalWrite(pwrCut, HIGH);
-      LedAllOff();
-      fireDetectionCount = 0;  // Reset counter after triggering
     }
   } else {
-    fireDetectionCount = 0;  // Reset if conditions return to normal
+    if (sFlag10) {
+      fireDetectionCount = 0;
+      sFlag10 = false;
+    }
   }
-
-  avaTemp = 0;
+  //////////////////////////////////////////////////////////////////////////////////////////
 
   //lightnin Protect
   if (rainSensor < 1) {  // 1020
@@ -977,24 +1120,33 @@ void Securty_mode() {  // activate with button, all pir's working at same time
       Blynk.logEvent("motion_detected", "Motion detected top left outside!");
     }
 
-    //Blynk.virtualWrite(V2, pirCount1);
+
 
     if (pirCount1 > 0) {
 
       if (!alarmCutOff) {
-        digitalWrite(alarm, HIGH);
+        pcf1.digitalWrite(alarm, HIGH);
       }
 
+      Blynk.virtualWrite(V2, pirCount1);
 
-      ledcWrite(KLroomCh, 255);
-      ledcWrite(stairsCh, 255);
-      ledcWrite(livingCh, 255);
-      ledcWrite(diningCh, 255);
-      ledcWrite(kitchenCh, 255);
+      ledcWrite(KLroomCh, 220);
+      ledcWrite(stairsCh, 220);
+      ledcWrite(livingCh, 220);
+      ledcWrite(diningCh, 220);
+      ledcWrite(kitchenCh, 220);
+
+      pcf1.digitalWrite(rf1, LOW);
+      pcf1.digitalWrite(rf2, LOW);
+      pcf1.digitalWrite(rf3, LOW);
+      pcf1.digitalWrite(rf4, LOW);
+      pcf1.digitalWrite(RF_CH, HIGH);
 
       delay(random(50, 150));
 
       LedAllOff();
+      pcf1.digitalWrite(RF_CH, LOW);
+      Blynk.virtualWrite(V2, "All RF lights ON");
 
       delay(random(50, 150));
 
@@ -1004,7 +1156,16 @@ void Securty_mode() {  // activate with button, all pir's working at same time
 
     else {
       LedAllOff();
-      digitalWrite(alarm, LOW);
+      pcf1.digitalWrite(alarm, LOW);
+      pcf1.digitalWrite(rf1, HIGH);
+      pcf1.digitalWrite(rf2, HIGH);
+      pcf1.digitalWrite(rf3, HIGH);
+      pcf1.digitalWrite(rf4, HIGH);
+      delay(500);
+      pcf1.digitalWrite(RF_CH, HIGH);
+      delay(500);
+      pcf1.digitalWrite(RF_CH, LOW);
+      Blynk.virtualWrite(V2, "All RF lights OFF");
     }
   }
 }
@@ -1064,15 +1225,21 @@ BLYNK_WRITE(V3) {
     SecuMode = false;
     Blynk.virtualWrite(V2, "Securty Mode is off");
     alarmCutOff = true;
-    digitalWrite(alarm, LOW);
+    pcf1.digitalWrite(alarm, LOW);
+    pcf1.digitalWrite(alarm, LOW);
+    pcf1.digitalWrite(rf1, HIGH);
+    pcf1.digitalWrite(rf2, HIGH);
+    pcf1.digitalWrite(rf3, HIGH);
+    pcf1.digitalWrite(rf4, HIGH);
+    delay(500);
+    pcf1.digitalWrite(RF_CH, HIGH);
+    delay(500);
+    pcf1.digitalWrite(RF_CH, LOW);
+    Blynk.virtualWrite(V2, "All RF lights OFF");
 
     pirCount1 = 0;
 
-    digitalWrite(KLroomPin, LOW);
-    digitalWrite(stairsPin, LOW);
-    digitalWrite(livingPin, LOW);
-    digitalWrite(diningPin, LOW);
-    digitalWrite(kitchenPin, LOW);
+    LedAllOff();
   }
 }
 
@@ -1233,6 +1400,13 @@ BLYNK_WRITE(V2) {  // ----------------------------------------------------------
     testV2cmd = false;
   }
 
+  if (cmd == "sftyOn") {
+    safetyMode = true;
+  }
+  if (cmd == "sftyOff") {
+    safetyMode = false;
+  }
+
   if (cmd == "getAmps") {
     cmd_systemAmp = true;
   } else {
@@ -1306,7 +1480,7 @@ BLYNK_WRITE(V2) {  // ----------------------------------------------------------
 
   if (cmd == "almLocOn") {
     alarmCutOff = true;
-    digitalWrite(alarm, LOW);
+    pcf1.digitalWrite(alarm, LOW);
     Blynk.virtualWrite(V2, "Alarm Locked!");
   }
 
@@ -1319,13 +1493,13 @@ BLYNK_WRITE(V2) {  // ----------------------------------------------------------
     if (alarmCutOff) {
       Blynk.virtualWrite(V2, "Alarm is Locked");
     } else {
-      digitalWrite(alarm, HIGH);
+      pcf1.digitalWrite(alarm, HIGH);
       Blynk.virtualWrite(V2, "Alarm is on");
     }
   }
 
   if (cmd == "almOff") {
-    digitalWrite(alarm, LOW);
+    pcf1.digitalWrite(alarm, LOW);
     Blynk.virtualWrite(V2, "Alarm is off");
   }
 
