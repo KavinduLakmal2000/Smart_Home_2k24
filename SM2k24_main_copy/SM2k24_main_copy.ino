@@ -6,7 +6,8 @@
 // OLED Display - ox3c
 
 ///////////////////////////////////////
-const char* SoftVer = "Software 2.8.1";
+const char* SoftVer = "Firmware 3.1.1";
+const char* whatsNew = "Add feature to turn off and on for lightning protection.)";
 ////////////////////TEST MODE///////////////////
 bool testMode = false;
 bool safetyMode = true;
@@ -29,9 +30,12 @@ bool safetyMode = true;
 #include <Wire.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+#include <TimeLib.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_NeoPixel.h>
+#include <SPI.h>
+#include <SD.h>
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -54,6 +58,13 @@ DHT dht(dht_dpin, DHTTYPE);
 DHT dht2(dht_dpin2, DHTTYPE2);
 DHT dht3(dht_dpin3, DHTTYPE3);
 
+#define SD_MISO 37
+#define SD_MOSI 35
+#define SD_SCK 36
+#define SD_CS 1
+
+SPIClass spi = SPIClass(FSPI);
+
 PCF8575 pcf1(0x23);  // 0x21
 
 #define LED_PIN 48
@@ -64,14 +75,19 @@ char auth[] = BLYNK_AUTH_TOKEN;
 char ssid[] = "SLT_Fiber_Optic";
 char pass[] = "Life1Mal7i";
 
-const long utcOffsetInSeconds = 19800;
 char daysOfTheWeek[7][12] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800);
+int lastMinute = -1;
+int lastCheckedDay = -1;
+char timestamp[25];
 
 int Hours = 0;
 int MiN = 0;
 int sec = 0;
+
+float angle = 0.0;
+float speed = 0.05;  // smaller = logo slower
 
 int i = 0;
 
@@ -112,6 +128,9 @@ bool flag1 = false;
 bool flag3 = false;
 bool flag4 = false;
 bool flag5 = false;
+bool flag6 = false;
+bool flag7 = false;
+bool flag8 = false;
 bool toggleState = false;
 bool pirPreviouslyDetected = false;
 
@@ -141,6 +160,7 @@ float batteryVoltage_sys = 0;
 float batteryVoltage_main = 0;
 int rainSensor = 1023;
 int rainDetectCount = 0;
+bool thunder = true;
 
 bool sFlag1 = false;
 bool sFlag2 = false;
@@ -152,6 +172,9 @@ bool sFlag7 = false;
 bool sFlag8 = false;
 bool sFlag9 = false;
 bool sFlag10 = false;
+bool sFlag11 = false;
+bool sFlag12 = false;
+
 
 long systemTempCount = 0;
 long batteryTempCount = 0;
@@ -173,6 +196,15 @@ long dhtchk = 0;
 long dhtchk1 = 0;
 long dhtchk2 = 0;
 
+int wifiRetryCount = 0;
+int blynkRetryCount = 0;
+unsigned long lastWiFiRetry = 0;
+unsigned long lastBlynkRetry = 0;
+const unsigned long retryInterval = 10UL * 60UL * 1000UL;  // 10 minutes
+
+bool Local_m_autoLight = false;
+bool Local_autoLight = false;
+
 bool cmd_testPir1 = false;
 bool cmd_testPir2 = false;
 
@@ -193,9 +225,12 @@ bool cmd_testPir2 = false;
 
 #define RF_CH 12
 
-bool testV2cmd = false;
+String logRain = "";
+String logMainVoltStatus = "";
+String errorBuffer = "";
+#define MAX_LINES 30
 
-long espLoopCount = 0;
+bool testV2cmd = false;
 
 void LedAllOff() {
   ledcWrite(KLroomCh, 0);
@@ -204,11 +239,11 @@ void LedAllOff() {
   ledcWrite(diningCh, 0);
   ledcWrite(kitchenCh, 0);
 
-  Blynk.virtualWrite(V1, 0);
-  Blynk.virtualWrite(V6, 0);
-  Blynk.virtualWrite(V7, 0);
-  Blynk.virtualWrite(V4, 0);
-  Blynk.virtualWrite(V5, 0);
+  Blynk.virtualWrite(V1, 0);  // KL ROOM
+  Blynk.virtualWrite(V6, 0);  // Dining
+  Blynk.virtualWrite(V7, 0);  // Kitchin
+  Blynk.virtualWrite(V4, 0);  // Stairs
+  Blynk.virtualWrite(V5, 0);  // Living
 }
 
 void setup() {
@@ -297,6 +332,58 @@ void setup() {
   Blynk.virtualWrite(V2, reason);
   Blynk.virtualWrite(V2, "System Starting...");
 
+  pinMode(espEnable, INPUT);
+  while (!digitalRead(espEnable)) {
+    Blynk.virtualWrite(V2, "Connect ESP32 to main board");
+    rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0));  // Red ON
+    rgbLed.show();
+    delay(200);
+    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));  // Red OFF
+    rgbLed.show();
+    delay(2000);
+  }
+
+  // ------------------------------------------------------------------- SD card --------------------------------------------
+  spi.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+  if (!SD.begin(SD_CS, spi)) {
+    Blynk.virtualWrite(V2, "Card Mount Failed");
+  } else {
+    Blynk.virtualWrite(V2, "SD card initialized successfully!");
+  }
+
+  updateAboutFile();
+  delay(500);
+  logFirmwareVersion();
+  delay(100);
+  checkCardSpace();
+  delay(100);
+  sendAboutInfo();
+  delay(200);
+  if (GetSettings("Xmode") == HIGH) {
+    Blynk.virtualWrite(V2, "X on");
+  } else {
+    Blynk.virtualWrite(V2, "X off");
+  }
+  delay(100);
+
+  if (GetSettings("AutoLight") == HIGH) {
+    Blynk.virtualWrite(V2, "Auto Lights on");
+  } else {
+    Blynk.virtualWrite(V2, "Auto Lights off");
+  }
+  delay(100);
+
+  if (GetSettings("m_AutoLight") == HIGH) {
+    Blynk.virtualWrite(V2, "Mid Night Auto Lights on");
+  } else {
+    Blynk.virtualWrite(V2, "Mid Night Auto Lights off");
+  }
+
+  delay(100);
+  Blynk.virtualWrite(V2, "Settings loaded!");
+
+  //------------------------------------------------------------------------------------------------------------------------
+
   if (!testMode) {
     display.clearDisplay();
     display.setTextSize(1);
@@ -337,7 +424,6 @@ void setup() {
 
   pinMode(insidePir, INPUT);
   pinMode(outsidePir_top, INPUT);
-  pinMode(espEnable, INPUT);
 
   pcf1.pinMode(alarm, OUTPUT);
   pcf1.pinMode(rf1, OUTPUT);
@@ -405,81 +491,102 @@ void setup() {
 }
 
 
-void loop() {
-  espLoopCount++;
-  Blynk.run();
-  timeClient.update();
-  Hours = timeClient.getHours();
-  MiN = timeClient.getMinutes();
-  sec = timeClient.getSeconds();
+void loop() {  //------------------------------------------------------------------------------------------------ loop start ------------------------------------------------------------
   resetCounter++;
 
-  Blynk.virtualWrite(V8, batteryVoltage_main);  // gauge
 
-  if (resetCounter > 600000) {
-    Blynk.virtualWrite(V2, resetCounter);
+  Serial_Read();   // read promini serial data
+  x_Mode();        // the room x mode
+  Securty_mode();  // activate with button, all pir's working at same time, alarm lock off
+  readTemp();      // read all the temp sensors and filter output values
+                   //autoSecurty();                   // pir sensors at out side automatic work and notifications
+  irSwitch();
+
+  if (MiN != lastMinute) {  // write data in SD card every 1 Min
+    lastMinute = MiN;
+    DataLog();
+    flushErrors();
   }
+  //--------------------------------------------------------------
+
+  if (Hours == 17 && !sFlag12) {
+    if (GetSettings("AutoLight") == HIGH) {
+      Local_autoLight = true;
+    } else {
+      Local_autoLight = false;
+    }
+
+    if (GetSettings("m_AutoLight") == HIGH) {
+      Local_m_autoLight = true;
+    } else {
+      Local_m_autoLight = false;
+    }
+    sFlag12 = true;
+  }
+
+  if (Hours == 18 && sFlag12) {
+    sFlag12 = false;
+  }
+
+  //------------------------------------------------------------
+
+  if (Hours == 1 && !sFlag11) {
+    if (GetSettings("Xmode") == HIGH) {
+      xX = true;
+    }
+    sFlag11 = true;
+  }
+
+  if (Hours == 7 && sFlag11) {
+    xX = false;
+    sFlag11 = false;
+  }
+
+  //-------------------------------------------------------------
+
+  if (Local_autoLight) {
+    autoLight();  // automatic turn on lights when house main power off at 6PM to 10PM
+  }
+
+  if (Local_m_autoLight) {
+    midNightAutoLights();  // automatic turn on lights when house main power is off at 10PM to 5AM (only when inside pir detects someone)
+  }
+
+  if (safetyMode) {
+    saftySys();  // checking all the temp sensors and voltage sensors if any problems send notification and cmd lines
+    if (flag8) {
+      Blynk.virtualWrite(V2, "Safety System Online");
+      flag8 = false;
+    }
+
+  } else {
+    if (!flag8) {
+      Blynk.virtualWrite(V2, "Safety System Shut Down!");
+      flag8 = true;
+    }
+  }
+
 
   //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
-  if (digitalRead(espEnable)) {
-    Serial_Read();   // read promini serial data
-    x_Mode();        // the room x mode
-    Securty_mode();  // activate with button, all pir's working at same time, alarm lock off
-    autoLight();     // automatic turn on lights when house main power off at 6PM to 10PM
-    readTemp();      // read all the temp sensors and filter output values
-    //autoSecurty(); // pir sensors at out side automatic work and notifications
-    midNightAutoLights();  // automatic turn on lights when house main power is off at 10PM to 5AM (only when inside pir detects someone)
-    irSwitch();
-
-    if (safetyMode) {
-      saftySys();  // checking all the temp sensors and voltage sensors if any problems send notification and cmd lines
-      if (flag3) {
-        Blynk.virtualWrite(V2, "Safety System Online");
-        flag3 = false;
-      }
-
-    } else {
-      if (!flag3) {
-        Blynk.virtualWrite(V2, "Safety System Shut Down!");
-        flag3 = true;
-      }
-    }
-
-
-    //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-    if (VoltSensor < 50) {
-      //Blynk.logEvent("volts_amps_sensors", "Main 230v Power Supply is off"); //------------ enable this after all done
-      main230Out = true;
-
-    }
-
-    else {
-      if (main230Out) {
-        pcf1.digitalWrite(rf1, HIGH);
-        pcf1.digitalWrite(rf2, HIGH);
-        pcf1.digitalWrite(rf3, HIGH);
-        pcf1.digitalWrite(rf4, HIGH);
-        delay(300);
-        pcf1.digitalWrite(RF_CH, HIGH);
-        delay(300);
-        pcf1.digitalWrite(RF_CH, LOW);
-        main230Out = false;
-      }
-    }
+  if (VoltSensor < 50) {
+    //Blynk.logEvent("volts_amps_sensors", "Main 230v Power Supply is off"); //------------ enable this after all done
+    main230Out = true;
 
   }
 
   else {
-    Blynk.virtualWrite(V2, "Connect ESP32 to main board");
-    rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0));  // Red ON
-    rgbLed.show();
-    delay(200);
-    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));  // Red OFF
-    rgbLed.show();
-    delay(2000);
+    if (main230Out) {
+      pcf1.digitalWrite(rf1, HIGH);
+      pcf1.digitalWrite(rf2, HIGH);
+      pcf1.digitalWrite(rf3, HIGH);
+      pcf1.digitalWrite(rf4, HIGH);
+      delay(300);
+      pcf1.digitalWrite(RF_CH, HIGH);
+      delay(300);
+      pcf1.digitalWrite(RF_CH, LOW);
+      main230Out = false;
+    }
   }
 
 
@@ -493,9 +600,9 @@ void loop() {
   if (testV2cmd) {  // for testing values cmd printing command for active "test"
     //Blynk.virtualWrite(V2, "rain count:");
     //Blynk.virtualWrite(V2, rainCounter);
-    Blynk.virtualWrite(V2, irSensor);
+    Blynk.virtualWrite(V2, "test");
+    midNightAutoLights();
   }
-
 
   if (cmd_rstCount) {
     Blynk.virtualWrite(V2, resetCounter);
@@ -534,13 +641,21 @@ void loop() {
     pcf1.digitalWrite(alarm, LOW);
   }
 
-  Blynk.virtualWrite(V10, envT);  // gauge
-
   if (WiFi.status() != WL_CONNECTED) {
 
-    Serial.println("⚠️ WiFi Disconnected. Retrying...");
-    WiFi.begin(ssid, pass);  // Retry
+    // ---------- Retry Control ----------
+    if (wifiRetryCount < 3) {
+      WiFi.begin(ssid, pass);
+      wifiRetryCount++;
+    } else {
+      if (millis() - lastWiFiRetry >= retryInterval) {
+        WiFi.begin(ssid, pass);
+        lastWiFiRetry = millis();
+      }
+    }
+    // -----------------------------------
 
+    // Your OLED + LED code (unchanged)
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
@@ -555,13 +670,52 @@ void loop() {
     display.print(F("Retrying..."));
     display.display();
 
-    rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0));  // Blue ON
+    rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0));
     rgbLed.show();
     delay(100);
-    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));  // Blue ON
+    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
     rgbLed.show();
     delay(1000);
   }
+
+
+  else if (!Blynk.connected()) {
+
+    // ---------- Retry Control ----------
+    if (blynkRetryCount < 3) {
+      Blynk.connect();
+      blynkRetryCount++;
+    } else {
+      if (millis() - lastBlynkRetry >= retryInterval) {
+        Blynk.connect();
+        lastBlynkRetry = millis();
+      }
+    }
+    // -----------------------------------
+
+    // Your OLED + LED code (unchanged)
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(22, 0);
+    display.print(F("- Smart House -"));
+    display.setCursor(45, 9);
+    display.print(F("- 2k24 -"));
+    display.drawLine(0, SCREEN_HEIGHT / 3.6, SCREEN_WIDTH, SCREEN_HEIGHT / 3.6, SSD1306_WHITE);
+    display.setCursor(15, 25);
+    display.print(F("Blynk Down!!!"));
+    display.setCursor(40, 35);
+    display.print(F("Retrying..."));
+    display.display();
+
+    rgbLed.setPixelColor(0, rgbLed.Color(255, 165, 0));
+    rgbLed.show();
+    delay(100);
+    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
+    rgbLed.show();
+    delay(1000);
+  }
+
 
   else {
     if (VoltSensor < 200) {
@@ -605,13 +759,399 @@ void loop() {
 
       display.display();
     }
+    wifiRetryCount = 0;
+    blynkRetryCount = 0;
+    lastWiFiRetry = millis();
+    lastBlynkRetry = millis();
+
+    Blynk.run();
+    timeDateUpdate();
+
+    Blynk.virtualWrite(V8, batteryVoltage_main);  // 16v battery gauge
+    Blynk.virtualWrite(V9, VoltSensor);           // 230v ac gauge
+    Blynk.virtualWrite(V10, envT);                //tmp gauge
+
+    if (resetCounter > 600000) {
+      Blynk.virtualWrite(V2, resetCounter);
+      rgbLed.setPixelColor(0, rgbLed.Color(10, 5, 0));
+      rgbLed.show();
+    }
   }
 
   delay(300);
 }  // ================================================================================================= loop end ==================================================================
 
+//----------------------------------------------------------------------------- SD Card START----------------------------------------------------------------------------------------
+void DataLog() {
+  /////////////////////////////////////////////////////////////// log ac 230v ////////////////////////////////////////////
+  String logMainVolt = String(timestamp) + ", " + String(VoltSensor);
+  File ACVolt = SD.open("/AC230v_log.csv", FILE_APPEND);
+  if (ACVolt) {
+    ACVolt.println(logMainVolt);
+    ACVolt.close();
+  } else {
+    Blynk.virtualWrite(V2, "Failed to log Ac Volt");
+  }
+
+  //////////////////////////////////////////////////////////////// log AC 230 on or off ///////////////////////////////
+
+  if (VoltSensor > 210) {
+    logMainVoltStatus = String(timestamp) + ", AC ON";
+  } else {
+    logMainVoltStatus = String(timestamp) + ", AC OFF";
+  }
+
+  File ACVoltSts = SD.open("/AC230v_Status_log.csv", FILE_APPEND);
+  if (ACVoltSts) {
+    ACVoltSts.println(logMainVoltStatus);
+    ACVoltSts.close();
+  } else {
+    Blynk.virtualWrite(V2, "Failed to log Ac Volt Status");
+  }
+
+  //////////////////////////////////////////////log amp sensor/////////////////////////////////////////////////////
+
+  String logAmpSen = String(timestamp) + ", " + String(AmpSensor);
+  File amps = SD.open("/Amp_Sensor_log.csv", FILE_APPEND);
+  if (amps) {
+    amps.println(logAmpSen);
+    amps.close();
+  } else {
+    Blynk.virtualWrite(V2, "Failed to log Amp sensor");
+  }
 
 
+  //////////////////////////////////////////////// main battery /////////////////////////////////////////////////////
+  String logMainBattery = String(timestamp) + ", " + String(batteryVoltage_main);
+  File MainBat = SD.open("/Main_battery_log.csv", FILE_APPEND);
+  if (MainBat) {
+    MainBat.println(logMainBattery);
+    MainBat.close();
+  } else {
+    Blynk.virtualWrite(V2, "Failed to log Main Battery");
+  }
+
+
+  //////////////////////////////////////////////// System Battery //////////////////////////////////////////////////
+  String logSysBattery = String(timestamp) + ", " + String(batteryVoltage_sys);
+  File SysBat = SD.open("/System_battery_log.csv", FILE_APPEND);
+  if (SysBat) {
+    SysBat.println(logSysBattery);
+    SysBat.close();
+  } else {
+    Blynk.virtualWrite(V2, "Failed to log System Battery");
+  }
+
+
+  ////////////////////////////////////////////////// system temp sensor value///////////////////////////////////////////
+  String logSysTemp = String(timestamp) + ", " + String(systemTemp);
+  File SysTemplog = SD.open("/System_temp_log.csv", FILE_APPEND);
+  if (SysTemplog) {
+    SysTemplog.println(logSysTemp);
+    SysTemplog.close();
+  } else {
+    Blynk.virtualWrite(V2, "Failed to log System temp");
+  }
+
+  ////////////////////////////////////////////////////// main battery temp value ///////////////////////////////////////////
+  String logMainBatTemp = String(timestamp) + ", " + String(batteryTemp);
+  File MainBatTemplog = SD.open("/Battery_temp_log.csv", FILE_APPEND);
+  if (MainBatTemplog) {
+    MainBatTemplog.println(logMainBatTemp);
+    MainBatTemplog.close();
+  } else {
+    Blynk.virtualWrite(V2, "Failed to log Main Battery temp");
+  }
+
+  //////////////////////////////////////////////////////// environment temp value //////////////////////////////////////////
+  String logEnvTemp = String(timestamp) + ", " + String(envT);
+  File EnvTemplog = SD.open("/Environment_temp_log.csv", FILE_APPEND);
+  if (EnvTemplog) {
+    EnvTemplog.println(logEnvTemp);
+    EnvTemplog.close();
+  } else {
+    Blynk.virtualWrite(V2, "Failed to log Environment temp");
+  }
+
+  /////////////////////////////////////////////////////////// Rain Log ////////////////////////////////////////////////////
+  File RainLog = SD.open("/Rain_log.csv", FILE_APPEND);
+  if (RainLog) {
+    RainLog.println(logRain);
+    RainLog.close();
+  } else {
+    Blynk.virtualWrite(V2, "Failed to log Environment Rain");
+  }
+}
+
+//////////////////////////////////////////////////////////// safety system log ////////////////////////////////
+
+void addError(String message) {
+  errorBuffer += String(timestamp) + ", " + message + "\n";
+}
+
+void flushErrors() {
+  if (errorBuffer.length() > 0) {
+    // Write all collected errors
+    File SafetyLog = SD.open("/Safety_system_Error_log.csv", FILE_APPEND);
+    if (SafetyLog) {
+      SafetyLog.print(errorBuffer);
+      SafetyLog.close();
+    } else {
+      Blynk.virtualWrite(V2, "Failed to log Safety system error");
+    }
+    errorBuffer = "";
+  } else {
+    String logEntry = String(timestamp) + ", All good";
+    File SafetyLog = SD.open("/Safety_system_Status_log.csv", FILE_WRITE);
+    if (SafetyLog) {
+      SafetyLog.println(logEntry);
+      SafetyLog.close();
+    } else {
+      Blynk.virtualWrite(V2, "Failed to log Safety system status");
+    }
+  }
+}
+//------------------------------------------------------ check safety log in blynk cmd ----------------------------------
+
+void sendLastLinesFromFile(const char* filename, String label) {
+  File logFile = SD.open(filename, FILE_READ);
+  if (!logFile) {
+    Blynk.virtualWrite(V2, "Failed to open " + String(filename));
+    return;
+  }
+
+  String lastLines[MAX_LINES];
+  int count = 0;
+  String currentLine = "";
+
+  while (logFile.available()) {
+    char c = logFile.read();
+    if (c == '\n') {
+      lastLines[count % MAX_LINES] = currentLine;
+      count++;
+      currentLine = "";
+    } else {
+      currentLine += c;
+    }
+  }
+
+  if (currentLine.length() > 0) {
+    lastLines[count % MAX_LINES] = currentLine;
+    count++;
+  }
+
+  logFile.close();
+
+  int start = (count > MAX_LINES) ? (count - MAX_LINES) : 0;
+
+  Blynk.virtualWrite(V2, "---- " + label + " ----");
+  for (int i = start; i < count; i++) {
+    Blynk.virtualWrite(V2, lastLines[i % MAX_LINES]);
+    delay(50);
+  }
+}
+// --------------------------------------------------- Check SD Card Space ------------------------------------------
+unsigned long getDirSize(File dir) {
+  unsigned long total = 0;
+  while (true) {
+    File entry = dir.openNextFile();
+    if (!entry) break;
+    if (entry.isDirectory()) {
+      total += getDirSize(entry);
+    } else {
+      total += entry.size();
+    }
+    entry.close();
+  }
+  return total;
+}
+
+void checkCardSpace() {
+  File root = SD.open("/");
+  unsigned long totalSize = getDirSize(root);
+  root.close();
+  unsigned long totalSizeMB = totalSize / (1024 * 1024);
+
+  // 1.5 GB = 1.5 * 1024 * 1024 * 1024
+  if (totalSizeMB > 1536) {
+    Blynk.virtualWrite(V2, "⚠️ WARNING: SD card almost full!");
+    Blynk.logEvent("volts_amps_sensors", "WARNING: SD card almost full!");
+  } else {
+    Blynk.virtualWrite(V2, "SD card space OK");
+    Blynk.virtualWrite(V2, String(totalSizeMB) + " MB");
+  }
+}
+//---------------------------------------------------------------------- add about.text -------------------------------------------------
+// Function to create/update about.txt
+void updateAboutFile() {
+  File file = SD.open("/about.txt", FILE_WRITE);
+  if (!file) {
+    Serial.println("Failed to open about.txt for writing");
+    return;
+  }
+  file.println(SoftVer);
+  file.println("Created BY KLTECHNOLOGY");
+  file.println("© 2024 Kavindu Lakmal. All rights reserved");
+  file.close();
+}
+
+// Function to read and send file via Blynk
+void sendAboutInfo() {
+  File file = SD.open("/about.txt", FILE_READ);
+  if (!file) {
+    Blynk.virtualWrite(V2, "⚠️ No about.txt found");
+    return;
+  }
+
+  while (file.available()) {
+    String line = file.readStringUntil('\n');
+    line.trim();
+    if (line.length() > 0) {
+      Blynk.virtualWrite(V2, line);
+      delay(150);
+    }
+  }
+
+  file.close();
+}
+//-------------------------------------------------------------------------- log firmware data --------------------------------------------------
+void logFirmwareVersion() {
+  // First check if file already contains this version
+  timeDateUpdate();
+  delay(1000);
+  File file = SD.open("/What_new_log.csv", FILE_READ);
+  if (file) {
+    String content = "";
+    while (file.available()) {
+      content = file.readStringUntil('\n');
+      if (content.indexOf(SoftVer) != -1) {
+        Blynk.virtualWrite(V2, "Firmware is up to date");
+        file.close();
+        return;
+      }
+    }
+    file.close();
+  }
+
+  // If not found → append new version entry
+  File logFile = SD.open("/What_new_log.csv", FILE_APPEND);
+  if (logFile) {
+    String entry = String(timestamp) + ", " + SoftVer + ", " + whatsNew;
+    logFile.println(entry);
+    Blynk.virtualWrite(V2, "Firmware Updated To New Version");
+    logFile.close();
+  } else {
+    Blynk.virtualWrite(V2, "Failed to write changelog");
+  }
+}
+
+void sendFirmwareLog() {
+  File logFile = SD.open("/What_new_log.csv", FILE_READ);
+  if (!logFile) {
+    Blynk.virtualWrite(V2, "⚠️ No firmware log found");
+    return;
+  }
+
+  while (logFile.available()) {
+    String line = logFile.readStringUntil('\n');
+    line.trim();
+    if (line.length() > 0) {
+      Blynk.virtualWrite(V2, line);
+      delay(120);  // prevent flooding Blynk
+    }
+  }
+
+  logFile.close();
+}
+
+bool SetSetting(const char* key, int value) {  //---------------------------- sttings save
+  String newValue = (value == HIGH) ? "HIGH" : "LOW";
+  String content = "";
+  bool found = false;
+
+  File file = SD.open("/settings.txt", FILE_READ);
+  if (file) {
+    while (file.available()) {
+      String line = file.readStringUntil('\n');
+      line.trim();
+
+      if (line.startsWith(key)) {
+        content += String(key) + "=" + newValue + "\n";
+        found = true;
+      } else {
+        content += line + "\n";
+      }
+    }
+    file.close();
+  }
+
+  if (!found) {
+    content += String(key) + "=" + newValue + "\n";
+  }
+
+  File writeFile = SD.open("/settings.txt", FILE_WRITE);
+  if (!writeFile) return false;
+  writeFile.print(content);
+  writeFile.close();
+
+  return true;
+}
+
+int GetSettings(const char* key) {  // ----------------------------------- Read settings
+  File file = SD.open("/settings.txt", FILE_READ);
+  if (!file) return LOW;  // Default
+
+  while (file.available()) {
+    String line = file.readStringUntil('\n');
+    line.trim();
+
+    if (line.startsWith(key)) {
+      int index = line.indexOf('=');
+      if (index > 0) {
+        String val = line.substring(index + 1);
+        val.trim();
+
+        file.close();
+        return (val == "HIGH") ? HIGH : LOW;
+      }
+    }
+  }
+
+  file.close();
+  return LOW;  // default if not found
+}
+
+void SendSettingsToCmd() {  // ------------------------------------------------- Read all the settings in once
+  File file = SD.open("/settings.txt", FILE_READ);
+
+  if (!file) {
+    Blynk.virtualWrite(V2, "⚠ No settings.txt found");
+    return;
+  }
+
+  Blynk.virtualWrite(V2, "📌 Current Settings:");
+
+  while (file.available()) {
+    String line = file.readStringUntil('\n');
+    line.trim();
+
+    if (line.length() == 0) continue;
+
+    int idx = line.indexOf('=');
+    if (idx > 0) {
+      String key = line.substring(0, idx);
+      String value = line.substring(idx + 1);
+
+      Blynk.virtualWrite(V2, key + " = " + value);
+      delay(150);
+    }
+  }
+
+  file.close();
+}
+
+
+//----------------------------------------------------------------------------- SD Card END ----------------------------------------------------------------------------------------
 void irSwitch() {
 
   if (irSensor == "i") {
@@ -663,12 +1203,19 @@ void Serial_Read() {
       microControllVolt_analog = value3.toInt();
       batteryVoltage_main = value4.toFloat();
       powerW = value5.toFloat();
-      rainSensor = value6.toInt();
       irSensor = value7;
+
+      if (thunder) {
+        rainSensor = value6.toInt();
+      } else {
+        rainSensor = 1024;
+        rainCounter = 0;
+        Blynk.virtualWrite(V2, "lightning protection off!");
+        Blynk.virtualWrite(V2, value6.toInt());
+      }
     }
 
     batteryVoltage_sys = microControllVolt_analog * (maxSystemBatteryVoltage / maxADCValue);
-    Blynk.virtualWrite(V9, VoltSensor);  // gauge
   }
 }
 
@@ -724,7 +1271,8 @@ void midNightAutoLights() {  // automatic turn on lights when house main power i
 
   bool pirState = digitalRead(insidePir);
 
-  if (Hours >= 22 || Hours <= 5) {
+  if (Hours >= 22 || Hours <= 4) {
+    flag6 = true;
 
     if (pirState && !pirPreviouslyDetected) {
       if (!toggleState) {
@@ -743,47 +1291,75 @@ void midNightAutoLights() {  // automatic turn on lights when house main power i
     if (pirCounter > 1) {
       rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));  //green off
       rgbLed.show();
-      //Blynk.virtualWrite(V2, pirCounter);
+      ledcWrite(kitchenCh, 200);
+      Blynk.virtualWrite(V7, 250);
+      Blynk.virtualWrite(V2, pirCounter);
     } else {
-      rgbLed.setPixelColor(0, rgbLed.Color(0, 10, 0));  // green on
+
+      if (xX) {
+        rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 10));  // blue on
+      } else {
+        rgbLed.setPixelColor(0, rgbLed.Color(0, 10, 0));  // green on
+      }
       rgbLed.show();
+      ledcWrite(kitchenCh, 0);
+      Blynk.virtualWrite(V7, 0);
+      pirCounter = 0;
     }
 
     if (VoltSensor < 210) {
 
       if (pirCounter > 0) {
-        ledcWrite(KLroomCh, 100);
-        ledcWrite(stairsCh, 0);
-        ledcWrite(livingCh, 0);
-        ledcWrite(diningCh, 50);
-        ledcWrite(kitchenCh, 100);
-        /////////////////////////
-        Blynk.virtualWrite(V1, 100);
-        Blynk.virtualWrite(V6, 50);
-        Blynk.virtualWrite(V7, 100);
-        flag3 = true;
-        Blynk.virtualWrite(V2, pirCounter);
+        if (!flag3) {
+          ledcWrite(stairsCh, 50);
+          ledcWrite(livingCh, 0);
+          ledcWrite(diningCh, 50);
+          ledcWrite(kitchenCh, 200);
+
+          Blynk.virtualWrite(V4, 50);
+          Blynk.virtualWrite(V6, 50);
+          Blynk.virtualWrite(V7, 200);
+
+          flag3 = true;
+        }
       }
 
       else {
+
         if (flag3) {
-          LedAllOff();
-          Blynk.virtualWrite(V1, 0);
+          ledcWrite(stairsCh, 0);
+          ledcWrite(diningCh, 0);
+          ledcWrite(kitchenCh, 0);
+          Blynk.virtualWrite(V4, 0);
           Blynk.virtualWrite(V6, 0);
           Blynk.virtualWrite(V7, 0);
+
           flag3 = false;
         }
       }
+      flag7 = true;
     }
-  }
+
+    else {
+      if (flag7) {
+        ledcWrite(stairsCh, 0);
+        ledcWrite(diningCh, 0);
+        ledcWrite(kitchenCh, 0);
+        Blynk.virtualWrite(V4, 0);
+        Blynk.virtualWrite(V6, 0);
+        Blynk.virtualWrite(V7, 0);
+        flag7 = false;
+      }
+    }
+  }  //---------------------------------------------
 
   else {
-    if (flag3) {
+    if (flag6) {
       LedAllOff();
       Blynk.virtualWrite(V1, 0);
       Blynk.virtualWrite(V6, 0);
       Blynk.virtualWrite(V7, 0);
-      flag3 = false;
+      flag6 = false;
     }
   }
 
@@ -797,7 +1373,7 @@ void midNightAutoLights() {  // automatic turn on lights when house main power i
 
 void autoLight() {
 
-  if (Hours >= 18 && Hours <= 22 && VoltSensor < 210) {
+  if (Hours >= 18 && Hours <= 2 && VoltSensor < 210) {
     if (!autolightTriggered) {
 
       autolightEnable = true;
@@ -828,7 +1404,7 @@ void autoLight() {
   }
 }
 void saftySys() {  // checking all the temp sensors and voltage sensors if any problems send notification and cmd lines
-  float avaTemp = envT + 2;
+  float avaTemp = envT + 2.5;
 
   if (systemTemp > avaTemp) {
     pcf1.digitalWrite(fan, HIGH);
@@ -838,7 +1414,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
 
   avaTemp = 0;
   //////////////////////////////////////////////////////////////////////////////////////////
-  if (VoltSensor > 255) {
+  if (VoltSensor > 265) {
     if (voltHighCount < 10) {
       voltHighCount++;
     }
@@ -853,8 +1429,8 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
         Blynk.logEvent("volts_amps_sensors", "Main 230V is too high!");
         sFlag1 = true;
       }
-
       Blynk.virtualWrite(V2, "Main 230V is too high! Count: " + String(voltHighCount));
+      addError("Main 230V is too high!");
     }
   } else {
     if (sFlag1) {
@@ -865,7 +1441,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
     }
   }
   ///////////////////////////////////////////////////////////////////////////////////
-  if (VoltSensor > 90 && VoltSensor < 220) {
+  if (VoltSensor > 90 && VoltSensor < 200) {
 
     if (voltLowCount < 10) {
       voltLowCount++;
@@ -878,6 +1454,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
         sFlag2 = true;
       }
       Blynk.virtualWrite(V2, "Main 230V is too Low! Count: " + String(voltLowCount));
+      addError("Main 230V is too low!");
     }
   }
 
@@ -904,6 +1481,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
         sFlag3 = true;
       }
       Blynk.virtualWrite(V2, "Main battery is overcharging! Count: " + String(batteryMainHighCount));
+      addError("Main battery is overcharging!");
     }
 
   } else {
@@ -929,6 +1507,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
         sFlag4 = true;
       }
       Blynk.virtualWrite(V2, "Main battery voltage is too low! Count: " + String(batteryMainLowCount));
+      addError("Main battery voltage is too low!");
     }
   } else {
     if (sFlag4) {
@@ -952,6 +1531,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
         sFlag5 = true;
       }
       Blynk.virtualWrite(V2, "System voltage is too high! Count: " + String(batterySysHighCount));
+      addError("System voltage is too high!");
     }
   } else {
     if (sFlag5) {
@@ -971,9 +1551,10 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
     if (batterySysLowCount >= 5) {
       if (!sFlag6) {
         Blynk.logEvent("volts_amps_sensors", "System voltage is too low!");
-        Blynk.virtualWrite(V2, "System voltage is too low! Count: " + String(batterySysLowCount));
         sFlag6 = true;
       }
+      Blynk.virtualWrite(V2, "System voltage is too low! Count: " + String(batterySysLowCount));
+      addError("System voltage is too low!");
     }
   } else {
     if (sFlag6) {
@@ -995,6 +1576,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
         sFlag7 = true;
       }
       Blynk.virtualWrite(V2, "System Temp is too high! Count: " + String(systemTempCount));
+      addError("System Temp is too high!");
     }
   } else {
     if (sFlag7) {
@@ -1017,6 +1599,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
         sFlag8 = true;
       }
       Blynk.virtualWrite(V2, "Battery Temp is too high! Count: " + String(batteryTempCount));
+      addError("Battery Temp is too high!");
     }
   } else {
     if (sFlag7) {
@@ -1039,6 +1622,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
         sFlag9 = true;
       }
       Blynk.virtualWrite(V2, "Power Supply Temp is too high! Count: " + String(envTCount));
+      addError("Power Supply Temp is too high!");
     }
   } else {
     if (sFlag9) {
@@ -1062,6 +1646,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
         sFlag10 = true;
       }
       Blynk.virtualWrite(V2, "🔥 Fire Detected!!! Count: " + String(fireDetectionCount));
+      addError("Fire Detected!!!");
     }
   } else {
     if (sFlag10) {
@@ -1069,10 +1654,10 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
       sFlag10 = false;
     }
   }
-  //////////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////Lightning protect on/////////////////////////////////////////////////////
 
   //lightnin Protect
-  if (rainSensor < 1) {  // 1020
+  if (rainSensor < 1018) {
     rainDetectCount++;
     if (rainDetectCount > 10) {
       rainCounter = 300;
@@ -1087,6 +1672,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
   if (rainCounter > 0) {
     pcf1.digitalWrite(lightninProtect, LOW);
     Blynk.virtualWrite(V2, "Lightning protect on");
+    logRain = String(timestamp) + ", Raining";
     rainProtect = true;
     rainCounter--;
   }
@@ -1095,6 +1681,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
     if (rainProtect) {
       pcf1.digitalWrite(lightninProtect, HIGH);
       Blynk.virtualWrite(V2, "Lightning protect off");
+      logRain = String(timestamp) + ", No Rain";
       rainProtect = false;
     }
   }
@@ -1269,9 +1856,28 @@ BLYNK_WRITE(V7) {
 }
 
 void display4() {
-  display.setCursor(0, 20);
-  display.print(F("Battery Volt: "));
-  display.print(batteryVoltage_main);
+  int cx = SCREEN_WIDTH / 2;
+  int cy = (SCREEN_HEIGHT / 2) + 20;  // shift down
+
+  const char* logo = "KL";
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+
+  float radius = 10;
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.getTextBounds(logo, 0, 0, &x1, &y1, &w, &h);
+
+  int x = cx - (w / 2) + cos(angle) * radius;
+  int y = cy - (h / 2) + sin(angle) * radius;
+
+  display.setCursor(x, y);
+  display.print(logo);
+
+  angle += speed;
+  if (angle >= 2 * PI) angle = 0;
+
+  delay(30);
 }
 
 void display3() {
@@ -1374,6 +1980,30 @@ void display1() {
   display.print(F(" C"));
 }
 
+void timeDateUpdate() {
+  timeClient.update();
+  Hours = timeClient.getHours();
+  MiN = timeClient.getMinutes();
+  sec = timeClient.getSeconds();
+
+  unsigned long epochTime = timeClient.getEpochTime();
+  int currentYear = year(epochTime);
+  int currentMonth = month(epochTime);
+  int currentDay = day(epochTime);
+
+  sprintf(timestamp, "%04d-%02d-%02d %02d:%02d:%02d",
+          currentYear, currentMonth, currentDay,
+          Hours, MiN, sec);
+
+  // ---------- Daily SD space check ----------
+  if (Hours == 0 && MiN == 0) {  // At 00:00 midnight
+    if (currentDay != lastCheckedDay) {
+      checkCardSpace();
+      lastCheckedDay = currentDay;
+    }
+  }
+}
+
 BLYNK_WRITE(V2) {  // ----------------------------------------------------------------------------------------- cmd command reading -----------------------
   cmd = param.asStr();
 
@@ -1455,9 +2085,89 @@ BLYNK_WRITE(V2) {  // ----------------------------------------------------------
     cmd_testPir2 = false;
   }
 
+  if (cmd == "offRain") {
+    Blynk.virtualWrite(V2, "Automatic lightning protection off!");
+    thunder = false;
+  }
+
+  if (cmd == "onRain") {
+    Blynk.virtualWrite(V2, "Automatic lightning protection on!");
+    thunder = true;
+  }
+
   if (cmd == "ELightOff") {
     pirCounter = 0;
     LedAllOff();
+  }
+
+  if (cmd == "Xauto") {
+    if (SetSetting("Xmode", HIGH)) {
+      Blynk.virtualWrite(V2, "New settings saved!");
+    } else {
+      Blynk.virtualWrite(V2, "Failed to save new settings");
+    }
+  }
+
+  if (cmd == "Xmanual") {
+    if (SetSetting("Xmode", LOW)) {
+      Blynk.virtualWrite(V2, "New settings saved!");
+    } else {
+      Blynk.virtualWrite(V2, "Failed to save new settings");
+    }
+  }
+
+  if (cmd == "MidNightAutoLightOn") {
+    if (SetSetting("m_AutoLight", HIGH)) {
+      Blynk.virtualWrite(V2, "New settings saved!");
+      Local_m_autoLight = true;
+    } else {
+      Blynk.virtualWrite(V2, "Failed to save new settings");
+    }
+  }
+
+  if (cmd == "MidNightAutoLightOff") {
+    if (SetSetting("m_AutoLight", LOW)) {
+      Blynk.virtualWrite(V2, "New settings saved!");
+      Local_m_autoLight = false;
+    } else {
+      Blynk.virtualWrite(V2, "Failed to save new settings");
+    }
+  }
+
+  if (cmd == "AutoLightOn") {
+    if (SetSetting("AutoLight", HIGH)) {
+      Blynk.virtualWrite(V2, "New settings saved!");
+      Local_autoLight = true;
+    } else {
+      Blynk.virtualWrite(V2, "Failed to save new settings");
+    }
+  }
+
+  if (cmd == "AutoLightOff") {
+    if (SetSetting("AutoLight", LOW)) {
+      Blynk.virtualWrite(V2, "New settings saved!");
+      Local_autoLight = false;
+    } else {
+      Blynk.virtualWrite(V2, "Failed to save new settings");
+    }
+  }
+
+  if (cmd == "readSettings") {
+    SendSettingsToCmd();
+  }
+
+
+  if (cmd == "chkSD") {
+    checkCardSpace();
+  }
+
+  if (cmd == "sftyLog") {
+    sendLastLinesFromFile("/Safety_system_Error_log.csv", "Error Log");
+    sendLastLinesFromFile("/Safety_system_Status_log.csv", "Status Log");
+  }
+
+  if (cmd == "firmLog") {
+    sendFirmwareLog();
   }
 
   if (cmd == "autoLightOff") {
@@ -1471,11 +2181,7 @@ BLYNK_WRITE(V2) {  // ----------------------------------------------------------
   }
 
   if (cmd == "about") {
-    Blynk.virtualWrite(V2, SoftVer);
-    delay(100);
-    Blynk.virtualWrite(V2, "Created BY KLTECHNOLOGY");
-    delay(200);
-    Blynk.virtualWrite(V2, "© 2024 Kavindu Lakmal. All rights reserved");
+    sendAboutInfo();
   }
 
   if (cmd == "almLocOn") {
@@ -1535,7 +2241,6 @@ BLYNK_WRITE(V2) {  // ----------------------------------------------------------
     delay(1000);
     esp_restart();
   }
-
   if (cmd == "rf1On") {
     pcf1.digitalWrite(rf1, LOW);
     Blynk.virtualWrite(V2, "RF SW1 ON");
@@ -1684,11 +2389,45 @@ BLYNK_WRITE(V2) {  // ----------------------------------------------------------
 
 
   if (cmd == "Xon") {
+    if (GetSettings("Xmode")) {
+      Blynk.virtualWrite(V2, "Auto X mode is on!");
+    }
     xX = true;
     flag1 = true;
   }
   if (cmd == "Xoff") {
     xX = false;
     flag1 = true;
+  }
+
+  if (cmd == "help") {
+    Blynk.virtualWrite(V2, "📖 Command Help Menu:");
+    delay(100);
+
+    Blynk.virtualWrite(V2, "pCut - Cut main power temporarily");
+    Blynk.virtualWrite(V2, "test - Enable test mode");
+    Blynk.virtualWrite(V2, "sftyOn / sftyOff - Safety mode ON/OFF");
+    Blynk.virtualWrite(V2, "getAmps - Get system current");
+    Blynk.virtualWrite(V2, "getRain - Get rain sensor status");
+    Blynk.virtualWrite(V2, "getSystemVolt - Get system voltage");
+    Blynk.virtualWrite(V2, "getSystemTemp - Get system temperature");
+    Blynk.virtualWrite(V2, "getBatteryTemp - Get battery temperature");
+    Blynk.virtualWrite(V2, "testInPir / testOutTopPir - PIR test modes");
+    Blynk.virtualWrite(V2, "rstCount - Reset counter");
+    Blynk.virtualWrite(V2, "ELightOff - Emergency lights OFF");
+    Blynk.virtualWrite(V2, "chkSD - Check SD card space");
+    Blynk.virtualWrite(V2, "sftyLog - Send safety logs");
+    Blynk.virtualWrite(V2, "firmLog - Send firmware log");
+    Blynk.virtualWrite(V2, "autoLightOff - Force auto light OFF");
+    Blynk.virtualWrite(V2, "about - Show about info");
+    Blynk.virtualWrite(V2, "almLocOn / almLocOff - Lock/Unlock alarm");
+    Blynk.virtualWrite(V2, "almOn / almOff - Turn alarm ON/OFF");
+    Blynk.virtualWrite(V2, "pwrGon / pwrGoff - Lightning protection ON/OFF");
+    Blynk.virtualWrite(V2, "fan - Test fan");
+    Blynk.virtualWrite(V2, "reset - Restart ESP32");
+    Blynk.virtualWrite(V2, "rf1On / rf1Off ... rf4On / rf4Off - RF Switch control");
+    Blynk.virtualWrite(V2, "rfCH1 / rfCH2 - Select RF Channel");
+    Blynk.virtualWrite(V2, "rfAllOn / rfAllOff - RF lights ON/OFF");
+    Blynk.virtualWrite(V2, "rfStatus - Get RF status report");
   }
 }
