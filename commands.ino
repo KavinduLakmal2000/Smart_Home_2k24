@@ -5,6 +5,17 @@ BLYNK_WRITE(V2) {  // ----------------------------------------------------------
     Serial.print(cmd);
   }
 
+  if (cmd.startsWith("setRain")) {
+    String valStr = cmd.substring(7); // Extract numbers after "setRain"
+    if (valStr.length() > 0) {
+      int newLimit = valStr.toInt();
+      if (SetSetting("rain", newLimit)) {
+        rainThreshold = newLimit;
+        Blynk.virtualWrite(V2, "Rain threshold saved: " + String(rainThreshold));
+      }
+    }
+  }
+
   if (cmd == "pCut") {
     pcf1.digitalWrite(pwrCut, LOW);
     delay(1000);
@@ -38,6 +49,7 @@ BLYNK_WRITE(V2) {  // ----------------------------------------------------------
   }
 
   if (cmd == "getRain") {
+    Blynk.virtualWrite(V2, "Saved Rain Limit: " + String(rainThreshold));
     cmd_rainSensor = true;
   } else {
     cmd_rainSensor = false;

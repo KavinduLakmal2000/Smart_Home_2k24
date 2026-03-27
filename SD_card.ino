@@ -282,18 +282,26 @@ void sendFirmwareLog() {
 }
 
 bool SetSetting(const char* key, int value) {  //---------------------------- sttings save
-  String newValue = (value == HIGH) ? "HIGH" : "LOW";
+  String newValue;
+  // Store "rain" as a quoted number, others as HIGH/LOW
+  if (String(key) == "rain") {
+    newValue = "\"" + String(value) + "\"";
+  } else {
+    newValue = (value == HIGH) ? "HIGH" : "LOW";
+  }
+
   String content = "";
   bool found = false;
 
-  File file = SD.open("/settings.txt", FILE_READ);
+  File file = SD.open("/settings.text", FILE_READ);
   if (file) {
     while (file.available()) {
       String line = file.readStringUntil('\n');
       line.trim();
+      if (line.length() == 0) continue;
 
       if (line.startsWith(key)) {
-        content += String(key) + "=" + newValue + "\n";
+        content += String(key) + " = " + newValue + "\n";
         found = true;
       } else {
         content += line + "\n";
@@ -303,10 +311,10 @@ bool SetSetting(const char* key, int value) {  //---------------------------- st
   }
 
   if (!found) {
-    content += String(key) + "=" + newValue + "\n";
+    content += String(key) + " = " + newValue + "\n";
   }
 
-  File writeFile = SD.open("/settings.txt", FILE_WRITE);
+  File writeFile = SD.open("/settings.text", FILE_WRITE);
   if (!writeFile) return false;
   writeFile.print(content);
   writeFile.close();
@@ -315,7 +323,7 @@ bool SetSetting(const char* key, int value) {  //---------------------------- st
 }
 
 int GetSettings(const char* key) {  // ----------------------------------- Read settings
-  File file = SD.open("/settings.txt", FILE_READ);
+  File file = SD.open("/settings.text", FILE_READ);
   if (!file) return LOW;  // Default
 
   while (file.available()) {
@@ -328,8 +336,15 @@ int GetSettings(const char* key) {  // ----------------------------------- Read 
         String val = line.substring(index + 1);
         val.trim();
 
+        // Strip quotes if they exist (e.g. "1023" -> 1023)
+        if (val.startsWith("\"") && val.endsWith("\"")) {
+          val = val.substring(1, val.length() - 1);
+        }
+
         file.close();
-        return (val == "HIGH") ? HIGH : LOW;
+        if (val == "HIGH") return HIGH;
+        if (val == "LOW") return LOW;
+        return val.toInt(); // Return the numeric threshold
       }
     }
   }
@@ -339,10 +354,10 @@ int GetSettings(const char* key) {  // ----------------------------------- Read 
 }
 
 void SendSettingsToCmd() {  // ------------------------------------------------- Read all the settings in once
-  File file = SD.open("/settings.txt", FILE_READ);
+  File file = SD.open("/settings.text", FILE_READ);
 
   if (!file) {
-    Blynk.virtualWrite(V2, "⚠ No settings.txt found");
+    Blynk.virtualWrite(V2, "⚠ No settings.text found");
     return;
   }
 

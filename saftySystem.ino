@@ -252,7 +252,7 @@ void saftySys() {  // checking all the temp sensors and voltage sensors if any p
   ////////////////////////////////////////////////Lightning protect on/////////////////////////////////////////////////////
 
   //lightnin Protect
-  if (rainSensor < 1018) {
+  if (rainSensor < rainThreshold) {
     rainDetectCount++;
     if (rainDetectCount > 10) {
       rainCounter = 300;

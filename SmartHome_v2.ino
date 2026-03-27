@@ -6,8 +6,8 @@
 // OLED Display - ox3c
 
 ///////////////////////////////////////
-const char* SoftVer = "Firmware 3.1.1";
-const char* whatsNew = "Add feature to turn off and on for lightning protection.)";
+const char* SoftVer = "Firmware 3.1.2";
+const char* whatsNew = "ADD getRain and setRain to edit rain sensor sensitivity";
 ////////////////////TEST MODE///////////////////
 bool testMode = false;
 bool safetyMode = true;
@@ -159,6 +159,7 @@ const int maxADCValue = 1023;
 float batteryVoltage_sys = 0;
 float batteryVoltage_main = 0;
 int rainSensor = 1023;
+int rainThreshold = 1018;
 int rainDetectCount = 0;
 bool thunder = true;
 
@@ -359,6 +360,14 @@ void setup() {
   delay(100);
   sendAboutInfo();
   delay(200);
+
+  int savedRain = GetSettings("rain");
+  if (savedRain > 0) {
+    rainThreshold = savedRain;
+  }
+  Blynk.virtualWrite(V2, "Rain Limit: " + String(rainThreshold));
+  delay(100);
+
   if (GetSettings("Xmode") == HIGH) {
     Blynk.virtualWrite(V2, "X on");
   } else {
@@ -641,142 +650,7 @@ void loop() {  //---------------------------------------------------------------
     pcf1.digitalWrite(alarm, LOW);
   }
 
-  if (WiFi.status() != WL_CONNECTED) {
-
-    // ---------- Retry Control ----------
-    if (wifiRetryCount < 3) {
-      WiFi.begin(ssid, pass);
-      wifiRetryCount++;
-    } else {
-      if (millis() - lastWiFiRetry >= retryInterval) {
-        WiFi.begin(ssid, pass);
-        lastWiFiRetry = millis();
-      }
-    }
-    // -----------------------------------
-
-    // Your OLED + LED code (unchanged)
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(22, 0);
-    display.print(F("- Smart House -"));
-    display.setCursor(45, 9);
-    display.print(F("- 2k24 -"));
-    display.drawLine(0, SCREEN_HEIGHT / 3.6, SCREEN_WIDTH, SCREEN_HEIGHT / 3.6, SSD1306_WHITE);
-    display.setCursor(15, 25);
-    display.print(F("WiFi Disconnected"));
-    display.setCursor(40, 35);
-    display.print(F("Retrying..."));
-    display.display();
-
-    rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0));
-    rgbLed.show();
-    delay(100);
-    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
-    rgbLed.show();
-    delay(1000);
-  }
-
-
-  else if (!Blynk.connected()) {
-
-    // ---------- Retry Control ----------
-    if (blynkRetryCount < 3) {
-      Blynk.connect();
-      blynkRetryCount++;
-    } else {
-      if (millis() - lastBlynkRetry >= retryInterval) {
-        Blynk.connect();
-        lastBlynkRetry = millis();
-      }
-    }
-    // -----------------------------------
-
-    // Your OLED + LED code (unchanged)
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(22, 0);
-    display.print(F("- Smart House -"));
-    display.setCursor(45, 9);
-    display.print(F("- 2k24 -"));
-    display.drawLine(0, SCREEN_HEIGHT / 3.6, SCREEN_WIDTH, SCREEN_HEIGHT / 3.6, SSD1306_WHITE);
-    display.setCursor(15, 25);
-    display.print(F("Blynk Down!!!"));
-    display.setCursor(40, 35);
-    display.print(F("Retrying..."));
-    display.display();
-
-    rgbLed.setPixelColor(0, rgbLed.Color(255, 165, 0));
-    rgbLed.show();
-    delay(100);
-    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
-    rgbLed.show();
-    delay(1000);
-  }
-
-
-  else {
-    if (VoltSensor < 200) {
-      display3();
-      display.display();
-    }
-
-
-    else {
-      display.clearDisplay();
-      display.setTextSize(1);
-      display.setTextColor(SSD1306_WHITE);
-      display.setCursor(20, 0);
-      display.print(F("- Smart House -"));
-      display.setCursor(0, 0);
-      display.print(F("K"));
-      display.setCursor(43, 9);
-      display.printf("%02d:%02d:%02d", Hours, MiN, sec);
-      display.setCursor(0, 9);
-      display.print(F("L"));
-      display.setCursor(122, 0);
-      display.print(F("2"));
-      display.setCursor(122, 9);
-      display.print(F("4"));
-      display.drawLine(0, SCREEN_HEIGHT / 3.6, SCREEN_WIDTH, SCREEN_HEIGHT / 3.6, SSD1306_WHITE);
-
-      switch (currentDisplay) {
-        case 0:
-          display1();
-          break;
-        case 1:
-          display2();
-          break;
-        case 2:
-          display3();
-          break;
-        case 3:
-          display4();
-          break;
-      }
-
-      display.display();
-    }
-    wifiRetryCount = 0;
-    blynkRetryCount = 0;
-    lastWiFiRetry = millis();
-    lastBlynkRetry = millis();
-
-    Blynk.run();
-    timeDateUpdate();
-
-    Blynk.virtualWrite(V8, batteryVoltage_main);  // 16v battery gauge
-    Blynk.virtualWrite(V9, VoltSensor);           // 230v ac gauge
-    Blynk.virtualWrite(V10, envT);                //tmp gauge
-
-    if (resetCounter > 600000) {
-      Blynk.virtualWrite(V2, resetCounter);
-      rgbLed.setPixelColor(0, rgbLed.Color(10, 5, 0));
-      rgbLed.show();
-    }
-  }
+  connectionCheck();
 
   delay(300);
 }  // ================================================================================================= loop end ==================================================================
@@ -835,6 +709,3 @@ BLYNK_WRITE(V7) {
   int val = param.asInt();
   ledcWrite(kitchenCh, val);  // Kitchen
 }
-
-
-
