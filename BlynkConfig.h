@@ -1,0 +1,8 @@
+#ifndef BLYNK_CONFIG_H
+#define BLYNK_CONFIG_H
+
+#define BLYNK_TEMPLATE_ID "TMPL6JKpqPS9E"
+#define BLYNK_TEMPLATE_NAME "ESP32 Smart Home"
+#define BLYNK_AUTH_TOKEN "Hl5yD-nmduiUih1XUFzHqgPOmrr1nZRT"
+
+#endif
