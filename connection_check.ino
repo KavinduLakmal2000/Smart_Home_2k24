@@ -129,7 +129,7 @@ void connectionCheck() {
     Blynk.virtualWrite(V9, VoltSensor);           // 230v ac gauge
     Blynk.virtualWrite(V10, envT);                //tmp gauge
 
-    if (resetCounter > 600000) {
+    if (resetCounter > 1000000) {
       Blynk.virtualWrite(V2, resetCounter);
       rgbLed.setPixelColor(0, rgbLed.Color(10, 5, 0));
       rgbLed.show();

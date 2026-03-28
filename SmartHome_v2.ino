@@ -6,8 +6,8 @@
 // OLED Display - ox3c
 
 ///////////////////////////////////////
-const char* SoftVer = "Firmware 3.1.2";
-const char* whatsNew = "ADD getRain and setRain to edit rain sensor sensitivity";
+const char* SoftVer = "Firmware 3.1.3";
+const char* whatsNew = "Add pir reset cmd, increase reset counter limit to 1000k";
 ////////////////////TEST MODE///////////////////
 bool testMode = false;
 bool safetyMode = true;
@@ -500,7 +500,7 @@ void setup() {
 }
 
 
-void loop() {  //------------------------------------------------------------------------------------------------ loop start ------------------------------------------------------------
+void loop() {  //===================================================================================== loop start ===================================================================
   resetCounter++;
 
 

@@ -25,7 +25,8 @@ void midNightAutoLights() {  // automatic turn on lights when house main power i
       ledcWrite(kitchenCh, 200);
       Blynk.virtualWrite(V7, 250);
       Blynk.virtualWrite(V2, pirCounter);
-    } else {
+    } 
+    else {
 
       if (xX) {
         rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 10));  // blue on
