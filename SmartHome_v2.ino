@@ -6,8 +6,8 @@
 // OLED Display - ox3c
 
 ///////////////////////////////////////
-const char* SoftVer = "Firmware 3.1.3";
-const char* whatsNew = "Add pir reset cmd, increase reset counter limit to 1000k";
+const char* SoftVer = "Firmware 3.1.4";
+const char* whatsNew = "bug fixes and optimizations";
 ////////////////////TEST MODE///////////////////
 bool testMode = false;
 bool safetyMode = true;
@@ -370,8 +370,10 @@ void setup() {
 
   if (GetSettings("Xmode") == HIGH) {
     Blynk.virtualWrite(V2, "X on");
+    xX = true;
   } else {
     Blynk.virtualWrite(V2, "X off");
+    xX = false;
   }
   delay(100);
 

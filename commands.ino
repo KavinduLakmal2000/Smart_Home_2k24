@@ -538,11 +538,13 @@ BLYNK_WRITE(V2)
     }
     xX = true;
     flag1 = true;
+    SetSetting("Xmode", HIGH);
   }
   if (cmd == "Xoff")
   {
     xX = false;
     flag1 = true;
+    SetSetting("Xmode", LOW);
   }
 
   if (cmd == "help")
@@ -565,6 +567,7 @@ BLYNK_WRITE(V2)
     Blynk.virtualWrite(V2, "rstCount - Reset counter");
     Blynk.virtualWrite(V2, "ELightOff - Emergency lights OFF");
     Blynk.virtualWrite(V2, "chkSD - Check SD card space");
+    Blynk.virtualWrite(V2, "readSettings - Show current settings");
     Blynk.virtualWrite(V2, "-------------------------------------------");
     Blynk.virtualWrite(V2, "sftyLog - Send safety logs");
     Blynk.virtualWrite(V2, "firmLog - Send firmware log");
