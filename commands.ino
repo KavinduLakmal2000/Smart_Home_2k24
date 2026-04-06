@@ -224,7 +224,7 @@ BLYNK_WRITE(V2)
     }
   }
 
-  if (cmd == "readSettings")
+  if (cmd == "getSettings")
   {
     SendSettingsToCmd();
   }
@@ -547,6 +547,13 @@ BLYNK_WRITE(V2)
     SetSetting("Xmode", LOW);
   }
 
+  if (cmd == "time"){
+    cmd_time = true;
+  }
+  else{
+    cmd_time = false;
+  }
+
   if (cmd == "help")
   {
     Blynk.virtualWrite(V2, "📖 Command Help Menu:");
@@ -562,12 +569,13 @@ BLYNK_WRITE(V2)
     Blynk.virtualWrite(V2, "getSystemVolt - Get system voltage");
     Blynk.virtualWrite(V2, "getSystemTemp - Get system temperature");
     Blynk.virtualWrite(V2, "getBatteryTemp - Get battery temperature");
+    Blynk.virtualWrite(V2, "getSettings - Show current settings");
     Blynk.virtualWrite(V2, "-------------------------------------------");
     Blynk.virtualWrite(V2, "testInPir / testOutTopPir - PIR test modes");
     Blynk.virtualWrite(V2, "rstCount - Reset counter");
     Blynk.virtualWrite(V2, "ELightOff - Emergency lights OFF");
     Blynk.virtualWrite(V2, "chkSD - Check SD card space");
-    Blynk.virtualWrite(V2, "readSettings - Show current settings");
+    Blynk.virtualWrite(V2, "time - Show system current time");
     Blynk.virtualWrite(V2, "-------------------------------------------");
     Blynk.virtualWrite(V2, "sftyLog - Send safety logs");
     Blynk.virtualWrite(V2, "firmLog - Send firmware log");

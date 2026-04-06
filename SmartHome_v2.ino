@@ -121,6 +121,7 @@ bool cmd_batTemp = false;
 bool cmd_systemAmp = false;
 bool cmd_rainSensor = false;
 bool cmd_rstCount = false;
+bool cmd_time = false;
 
 unsigned long resetCounter = 0;
 
@@ -370,7 +371,6 @@ void setup() {
 
   if (GetSettings("Xmode") == HIGH) {
     Blynk.virtualWrite(V2, "X on");
-    xX = true;
   } else {
     Blynk.virtualWrite(V2, "X off");
     xX = false;
@@ -381,6 +381,7 @@ void setup() {
     Blynk.virtualWrite(V2, "Auto Lights on");
   } else {
     Blynk.virtualWrite(V2, "Auto Lights off");
+    Local_autoLight = false;
   }
   delay(100);
 
@@ -388,6 +389,7 @@ void setup() {
     Blynk.virtualWrite(V2, "Mid Night Auto Lights on");
   } else {
     Blynk.virtualWrite(V2, "Mid Night Auto Lights off");
+    Local_m_autoLight = false;
   }
 
   delay(100);
@@ -503,6 +505,8 @@ void setup() {
 
 
 void loop() {  //===================================================================================== loop start ===================================================================
+  timeDateUpdate(); // Sync NTP time and update Hours, MiN, and timestamp variables
+
   resetCounter++;
 
 
@@ -645,6 +649,10 @@ void loop() {  //===============================================================
 
   if (cmd_testPir2) {
     Blynk.virtualWrite(V2, digitalRead(outsidePir_top));
+  }
+
+  if (cmd_time){
+    Blynk.virtualWrite(V2, "System Time: " + String(Hours) + ":" + String(MiN) + ":" + String(sec));
   }
 
 
