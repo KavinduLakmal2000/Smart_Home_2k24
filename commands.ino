@@ -332,7 +332,8 @@ BLYNK_WRITE(V2)
     Blynk.virtualWrite(V2, "Fan Checked!");
   }
 
-  if(cmd == "p"){
+  if (cmd == "p")
+  {
     pirCounter = 0;
     pirPreviouslyDetected = false;
     toggleState = false;
@@ -530,6 +531,38 @@ BLYNK_WRITE(V2)
     }
   }
 
+  if (cmd == "topLightOn")
+  {
+    topLight = true;
+    Blynk.virtualWrite(V2, "Top floor light ON");
+  }
+
+  if (cmd == "topLightOff")
+  {
+    topLight = false;
+    Blynk.virtualWrite(V2, "Top floor light OFF");
+  }
+
+  if (cmd == "setTopLightOn")
+  {
+    if (SetSetting("topLightAuto", HIGH))
+    {
+      Local_topLightAuto = true;
+      Blynk.virtualWrite(V2, "Top light schedule saved: ON");
+    }
+    else { Blynk.virtualWrite(V2, "Failed to save setting"); }
+  }
+
+  if (cmd == "setTopLightOff")
+  {
+    if (SetSetting("topLightAuto", LOW))
+    {
+      Local_topLightAuto = false;
+      Blynk.virtualWrite(V2, "Top light schedule saved: OFF");
+    }
+    else { Blynk.virtualWrite(V2, "Failed to save setting"); }
+  }
+
   if (cmd == "Xon")
   {
     if (GetSettings("Xmode"))
@@ -538,6 +571,7 @@ BLYNK_WRITE(V2)
     }
     xX = true;
     flag1 = true;
+    sFlag11 = true;
     SetSetting("Xmode", HIGH);
   }
   if (cmd == "Xoff")
@@ -547,10 +581,12 @@ BLYNK_WRITE(V2)
     SetSetting("Xmode", LOW);
   }
 
-  if (cmd == "time"){
+  if (cmd == "time")
+  {
     cmd_time = true;
   }
-  else{
+  else
+  {
     cmd_time = false;
   }
 
@@ -587,6 +623,7 @@ BLYNK_WRITE(V2)
     Blynk.virtualWrite(V2, "pwrGon / pwrGoff - Lightning protection ON/OFF");
     Blynk.virtualWrite(V2, "fan - Test fan");
     Blynk.virtualWrite(V2, "reset - Restart ESP32");
+    Blynk.virtualWrite(V2, "topLightOn / topLightOff - Top floor light control");
     Blynk.virtualWrite(V2, "-------------------------------------------");
     Blynk.virtualWrite(V2, "rf1On / rf1Off ... rf4On / rf4Off - RF Switch control");
     Blynk.virtualWrite(V2, "rfCH1 / rfCH2 - Select RF Channel");
@@ -595,5 +632,6 @@ BLYNK_WRITE(V2)
     Blynk.virtualWrite(V2, "-------------------------------------------");
     Blynk.virtualWrite(V2, "AutoLightOn / AutoLightOff - Night time emergency light ON/OFF");
     Blynk.virtualWrite(V2, "MidNightAutoLightOn / MidNightAutoLightOff - Mid night auto light ON/OFF");
+    Blynk.virtualWrite(V2, "setTopLightOn / setTopLightOff - Top light schedule ON/OFF");
   }
 }

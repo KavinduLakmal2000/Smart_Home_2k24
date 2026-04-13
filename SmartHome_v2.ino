@@ -6,8 +6,8 @@
 // OLED Display - ox3c
 
 ///////////////////////////////////////
-const char* SoftVer = "Firmware 3.1.5";
-const char* whatsNew = "Add WatchDog timer and bug fixes.";
+const char* SoftVer = "Firmware 3.1.6";
+const char* whatsNew = "gain control of top floor light";
 ////////////////////TEST MODE///////////////////
 bool testMode = false;
 bool safetyMode = true;
@@ -157,6 +157,7 @@ bool autolightTriggered = false;
 bool main230Out = false;
 bool irEn = false;
 bool rainProtect = false;
+bool topLight = false;
 
 const float maxSystemBatteryVoltage = 6.0;
 const int maxADCValue = 1023;
@@ -179,6 +180,8 @@ bool sFlag9 = false;
 bool sFlag10 = false;
 bool sFlag11 = false;
 bool sFlag12 = false;
+bool sFlag13 = false;
+bool sFlag14 = false;
 
 
 long systemTempCount = 0;
@@ -209,6 +212,7 @@ const unsigned long retryInterval = 10UL * 60UL * 1000UL;  // 10 minutes
 
 bool Local_m_autoLight = false;
 bool Local_autoLight = false;
+bool Local_topLightAuto = false;
 
 bool cmd_testPir1 = false;
 bool cmd_testPir2 = false;
@@ -221,6 +225,7 @@ bool cmd_testPir2 = false;
 #define lightninProtect 6  //pcf
 #define pwrCut 7           // pcf
 #define espEnable 5        // esp
+#define topLightPin 13        // pcf #white wire in 6pin connecter out 16v+
 #define ir_pin 4           // pcf
 
 #define rf1 8
@@ -403,6 +408,14 @@ void setup() {
   }
 
   delay(100);
+
+  if (GetSettings("topLightAuto") == HIGH) {
+    Blynk.virtualWrite(V2, "Top Light Schedule Enabled");
+  } else {
+    Blynk.virtualWrite(V2, "Top Light Schedule Disabled");
+    Local_topLightAuto = false;
+  }
+
   Blynk.virtualWrite(V2, "Settings loaded!");
 
   //------------------------------------------------------------------------------------------------------------------------
@@ -460,11 +473,13 @@ void setup() {
   pcf1.pinMode(pwrCut, OUTPUT);
   pcf1.pinMode(fan, OUTPUT);
   pcf1.pinMode(ir_pin, INPUT);
+  pcf1.pinMode(topLightPin, OUTPUT);
 
   pcf1.digitalWrite(lightninProtect, HIGH);
   pcf1.digitalWrite(pwrCut, HIGH);
   pcf1.digitalWrite(fan, LOW);
   pcf1.digitalWrite(alarm, LOW);
+  pcf1.digitalWrite(topLightPin, LOW);
 
   LedAllOff();
 
@@ -530,6 +545,7 @@ void loop() {  //===============================================================
   readTemp();      // read all the temp sensors and filter output values
                    //autoSecurty();                   // pir sensors at out side automatic work and notifications
   irSwitch();
+  TopLight(); // control top floor light
 
   if (MiN != lastMinute) {  // write data in SD card every 1 Min
     lastMinute = MiN;
