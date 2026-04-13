@@ -6,8 +6,8 @@
 // OLED Display - ox3c
 
 ///////////////////////////////////////
-const char* SoftVer = "Firmware 3.1.4";
-const char* whatsNew = "bug fixes and optimizations";
+const char* SoftVer = "Firmware 3.1.5";
+const char* whatsNew = "Add WatchDog timer and bug fixes.";
 ////////////////////TEST MODE///////////////////
 bool testMode = false;
 bool safetyMode = true;
@@ -27,6 +27,7 @@ bool safetyMode = true;
 #include "Arduino.h"
 #include "PCF8575.h"
 #include "esp_system.h"
+#include <esp_task_wdt.h>
 #include <Wire.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
@@ -41,6 +42,8 @@ bool safetyMode = true;
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 #define SCREEN_ADDRESS 0x3C
+
+#define WDT_TIMEOUT 15 // 15 seconds watchdog timeout
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -249,6 +252,10 @@ void LedAllOff() {
 }
 
 void setup() {
+  // Initialize Watchdog Timer
+  esp_task_wdt_init(WDT_TIMEOUT, true); // Enable panic so it reboots on timeout
+  esp_task_wdt_add(NULL);               // Add current thread (loop task) to WDT
+
   Serial.begin(9600);
   WiFi.begin(ssid, pass);
 
@@ -293,6 +300,7 @@ void setup() {
     }
 
     delay(250);
+    esp_task_wdt_reset(); // Feed the dog during WiFi connection
   }
 
   // --- WiFi Connection Result ---
@@ -343,6 +351,8 @@ void setup() {
     rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));  // Red OFF
     rgbLed.show();
     delay(2000);
+    
+    esp_task_wdt_reset(); // Feed the dog while waiting for hardware connection
   }
 
   // ------------------------------------------------------------------- SD card --------------------------------------------
@@ -414,6 +424,7 @@ void setup() {
       display.println("I");
       display.display();
       delay(5);
+      esp_task_wdt_reset(); // Feed the dog during animation
     }
 
     display.display();
@@ -484,6 +495,7 @@ void setup() {
 
     display.display();
     Serial_Read();
+    esp_task_wdt_reset(); // Feed the dog before the long final delay
     delay(5000);
     rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
     rgbLed.show();
@@ -505,6 +517,8 @@ void setup() {
 
 
 void loop() {  //===================================================================================== loop start ===================================================================
+  esp_task_wdt_reset(); // Reset the watchdog timer at the start of every loop
+
   timeDateUpdate(); // Sync NTP time and update Hours, MiN, and timestamp variables
 
   resetCounter++;
