@@ -17,22 +17,20 @@ void TopLight()
         }
     }
 
-
-        if (Local_topLightAuto && (Hours >= 21 || Hours <= 4))
+    if (Local_topLightAuto && (Hours >= 21 || Hours <= 4 || (Hours == 5 && Min <= 30)))
+    {
+        if (!sFlag14)
         {
-            if (!sFlag14)
-            {
-                pcf1.digitalWrite(topLightPin, HIGH);
-                sFlag14 = true;
-            }
+            topLight = true;
+            sFlag14 = true;
         }
-        else
+    }
+    else
+    {
+        if (sFlag14)
         {
-            if (sFlag14)
-            {
-                pcf1.digitalWrite(topLightPin, LOW);
-                sFlag14 = false;
-            }
+            topLight = false;
+            sFlag14 = false;
         }
-    
+    }
 }
