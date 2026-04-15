@@ -1,12 +1,18 @@
-void connectionCheck() {
-  if (WiFi.status() != WL_CONNECTED) {
+void connectionCheck()
+{
+  if (WiFi.status() != WL_CONNECTED)
+  {
 
     // ---------- Retry Control ----------
-    if (wifiRetryCount < 3) {
+    if (wifiRetryCount < 3)
+    {
       WiFi.begin(ssid, pass);
       wifiRetryCount++;
-    } else {
-      if (millis() - lastWiFiRetry >= retryInterval) {
+    }
+    else
+    {
+      if (millis() - lastWiFiRetry >= retryInterval)
+      {
         WiFi.begin(ssid, pass);
         lastWiFiRetry = millis();
       }
@@ -28,23 +34,22 @@ void connectionCheck() {
     display.print(F("Retrying..."));
     display.display();
 
-    rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0));
-    rgbLed.show();
-    delay(100);
-    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
-    rgbLed.show();
-    delay(1000);
+    blinkRed(); // Call the red blinking function
   }
 
-
-  else if (!Blynk.connected()) {
+  else if (!Blynk.connected())
+  {
 
     // ---------- Retry Control ----------
-    if (blynkRetryCount < 3) {
-      Blynk.connect();
+    if (blynkRetryCount < 3)
+    {
+      Blynk.connect(1000); 
       blynkRetryCount++;
-    } else {
-      if (millis() - lastBlynkRetry >= retryInterval) {
+    }
+    else
+    {
+      if (millis() - lastBlynkRetry >= retryInterval)
+      {
         Blynk.connect();
         lastBlynkRetry = millis();
       }
@@ -66,23 +71,19 @@ void connectionCheck() {
     display.print(F("Retrying..."));
     display.display();
 
-    rgbLed.setPixelColor(0, rgbLed.Color(255, 165, 0));
-    rgbLed.show();
-    delay(100);
-    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
-    rgbLed.show();
-    delay(1000);
+    blinkYellow(); // Call the yellow blinking function
   }
 
-
-  else {
-    if (VoltSensor < 200) {
+  else
+  {
+    if (VoltSensor < 200)
+    {
       display3();
       display.display();
     }
 
-
-    else {
+    else
+    {
       display.clearDisplay();
       display.setTextSize(1);
       display.setTextColor(SSD1306_WHITE);
@@ -100,19 +101,20 @@ void connectionCheck() {
       display.print(F("4"));
       display.drawLine(0, SCREEN_HEIGHT / 3.6, SCREEN_WIDTH, SCREEN_HEIGHT / 3.6, SSD1306_WHITE);
 
-      switch (currentDisplay) {
-        case 0:
-          display1();
-          break;
-        case 1:
-          display2();
-          break;
-        case 2:
-          display3();
-          break;
-        case 3:
-          display4();
-          break;
+      switch (currentDisplay)
+      {
+      case 0:
+        display1();
+        break;
+      case 1:
+        display2();
+        break;
+      case 2:
+        display3();
+        break;
+      case 3:
+        display4();
+        break;
       }
 
       display.display();
@@ -125,14 +127,48 @@ void connectionCheck() {
     Blynk.run();
     timeDateUpdate();
 
-    Blynk.virtualWrite(V8, batteryVoltage_main);  // 16v battery gauge
-    Blynk.virtualWrite(V9, VoltSensor);           // 230v ac gauge
-    Blynk.virtualWrite(V10, envT);                //tmp gauge
+    Blynk.virtualWrite(V8, batteryVoltage_main); // 16v battery gauge
+    Blynk.virtualWrite(V9, VoltSensor);          // 230v ac gauge
+    Blynk.virtualWrite(V10, envT);               // tmp gauge
 
-    if (resetCounter > 1000000) {
+    if (resetCounter > 1000000)
+    {
       Blynk.virtualWrite(V2, resetCounter);
       rgbLed.setPixelColor(0, rgbLed.Color(10, 5, 0));
       rgbLed.show();
     }
+  }
+}
+
+
+void blinkYellow()
+{
+  if (millis() - lastBlink > 1000)
+  {
+    lastBlink = millis();
+    ledState2 = !ledState2;
+
+    if (ledState2)
+      rgbLed.setPixelColor(0, rgbLed.Color(255, 165, 0));
+    else
+      rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
+
+    rgbLed.show();
+  }
+}
+
+void blinkRed()
+{
+  if (millis() - lastBlink > 1000)
+  {
+    lastBlink = millis();
+    ledState2 = !ledState2;
+
+    if (ledState2)
+      rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0));
+    else
+      rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
+
+    rgbLed.show();
   }
 }

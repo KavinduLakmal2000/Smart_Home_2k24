@@ -17,7 +17,7 @@ void TopLight()
         }
     }
 
-    if (Local_topLightAuto && (Hours >= 21 || Hours <= 4 || (Hours == 5 && Min <= 30)))
+    if (Local_topLightAuto && (Hours >= 21 || Hours <= 4 || (Hours == 5 && MiN <= 30)))
     {
         if (!sFlag14)
         {

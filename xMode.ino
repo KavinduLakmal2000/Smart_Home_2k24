@@ -1,42 +1,69 @@
-void x_Mode() {
-  if (xX) {
+void x_Mode()
+{
+  if (xX)
+  {
 
-    if (flag1) {
+    if (flag1)
+    {
       Blynk.virtualWrite(V2, "XXX mode is on");
       flag1 = false;
     }
 
-    if (digitalRead(insidePir)) {
-      if (millis() - millisCount >= 50) {
+    if (digitalRead(insidePir))
+    {
+      if (millis() - millisCount >= 50)
+      {
         millisCount = millis();
 
         ledState = !ledState;
 
-        if (ledState) {
-          rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 255));  // Red ON
+        if (ledState)
+        {
+          rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 255)); // Red ON
           rgbLed.show();
           delay(500);
-        } else {
-          rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));  // OFF
+        }
+        else
+        {
+          rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0)); // OFF
           rgbLed.show();
         }
       }
-
-    } else {
-      rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));  // Red
+    }
+    else
+    {
+      rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0)); // Red
       rgbLed.show();
     }
-
   }
 
-  else {
+  else
+  {
 
-    if (flag1) {
+    if (flag1)
+    {
       Blynk.virtualWrite(V2, "XXX mode is off");
       flag1 = false;
     }
 
-    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));  // Red
+    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0)); // Red
     rgbLed.show();
+  }
+
+  if (Local_x && (Hours >= 1 && Hours <= 5))
+  {
+    if (!sFlag15)
+    {
+      xX = true;
+      sFlag15 = true;
+    }
+  }
+  else
+  {
+    if (sFlag15)
+    {
+      xX = false;
+      sFlag15 = false;
+    }
   }
 }

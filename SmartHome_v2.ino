@@ -6,13 +6,12 @@
 // OLED Display - ox3c
 
 ///////////////////////////////////////
-const char* SoftVer = "Firmware 3.1.6";
-const char* whatsNew = "gain control of top floor light";
+const char *SoftVer = "Firmware 3.1.7";
+const char *whatsNew = "bug fixed, new features added, performance improved, and more!";
 ////////////////////TEST MODE///////////////////
 bool testMode = false;
 bool safetyMode = true;
 ////////////////////////////////////////////////
-
 
 #define BLYNK_TEMPLATE_ID "TMPL6JKpqPS9E"
 #define BLYNK_TEMPLATE_NAME "ESP32 Smart Home"
@@ -48,14 +47,13 @@ bool safetyMode = true;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define DHTTYPE DHT11
-#define dht_dpin 42  // D4
+#define dht_dpin 42 // D4
 
-#define DHTTYPE2 DHT11  // DHT 11
-#define dht_dpin2 14    // D4
+#define DHTTYPE2 DHT11 // DHT 11
+#define dht_dpin2 14   // D4
 
 #define DHTTYPE3 DHT11
 #define dht_dpin3 41
-
 
 DHT dht(dht_dpin, DHTTYPE);
 DHT dht2(dht_dpin2, DHTTYPE2);
@@ -68,7 +66,7 @@ DHT dht3(dht_dpin3, DHTTYPE3);
 
 SPIClass spi = SPIClass(FSPI);
 
-PCF8575 pcf1(0x23);  // 0x21
+PCF8575 pcf1(0x23); // 0x21
 
 #define LED_PIN 48
 #define NUM_PIXELS 1
@@ -78,7 +76,7 @@ char auth[] = BLYNK_AUTH_TOKEN;
 char ssid[] = "SLT_Fiber_Optic";
 char pass[] = "Life1Mal7i";
 
-char daysOfTheWeek[7][12] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800);
 int lastMinute = -1;
@@ -90,7 +88,7 @@ int MiN = 0;
 int sec = 0;
 
 float angle = 0.0;
-float speed = 0.05;  // smaller = logo slower
+float speed = 0.05; // smaller = logo slower
 
 int i = 0;
 
@@ -107,8 +105,8 @@ int i = 0;
 #define kitchenCh 4
 
 // Common PWM settings
-const int freq = 5000;     // 5 kHz
-const int resolution = 8;  // 8-bit resolution (0-255)
+const int freq = 5000;    // 5 kHz
+const int resolution = 8; // 8-bit resolution (0-255)
 
 String cmd = "";
 bool xX = false;
@@ -139,11 +137,14 @@ bool toggleState = false;
 bool pirPreviouslyDetected = false;
 
 unsigned long previousMillis = 0;
-const long display_interval = 5000;  // 5 seconds
-int currentDisplay = 0;              // Track which display is active
+const long display_interval = 5000; // 5 seconds
+int currentDisplay = 0;             // Track which display is active
 
-unsigned long lastDHTReadTime = 0;       // Store last read time
-const unsigned long dhtInterval = 2000;  // 2-second interval
+unsigned long lastBlink = 0;
+bool ledState2 = false;
+
+unsigned long lastDHTReadTime = 0;      // Store last read time
+const unsigned long dhtInterval = 2000; // 2-second interval
 
 String irSensor = "o";
 float VoltSensor = 0;
@@ -182,7 +183,7 @@ bool sFlag11 = false;
 bool sFlag12 = false;
 bool sFlag13 = false;
 bool sFlag14 = false;
-
+bool sFlag15 = false;
 
 long systemTempCount = 0;
 long batteryTempCount = 0;
@@ -208,25 +209,26 @@ int wifiRetryCount = 0;
 int blynkRetryCount = 0;
 unsigned long lastWiFiRetry = 0;
 unsigned long lastBlynkRetry = 0;
-const unsigned long retryInterval = 10UL * 60UL * 1000UL;  // 10 minutes
+const unsigned long retryInterval = 10UL * 60UL * 1000UL; // 10 minutes
 
 bool Local_m_autoLight = false;
 bool Local_autoLight = false;
 bool Local_topLightAuto = false;
+bool Local_x = false;
 
 bool cmd_testPir1 = false;
 bool cmd_testPir2 = false;
 
-#define insidePir 13       // esp pin
-#define outsidePir_top 12  // esp pin
-#define outsidePir_bot 11  //esp pin
-#define alarm 2            // pcf
-#define fan 3              // pcf pin
-#define lightninProtect 6  //pcf
-#define pwrCut 7           // pcf
-#define espEnable 5        // esp
-#define topLightPin 13        // pcf #white wire in 6pin connecter out 16v+
-#define ir_pin 4           // pcf
+#define insidePir 13      // esp pin
+#define outsidePir_top 12 // esp pin
+#define outsidePir_bot 11 // esp pin
+#define alarm 2           // pcf
+#define fan 3             // pcf pin
+#define lightninProtect 6 // pcf
+#define pwrCut 7          // pcf
+#define espEnable 5       // esp
+#define topLightPin 13    // pcf #white wire in 6pin connecter out 16v+
+#define ir_pin 4          // pcf
 
 #define rf1 8
 #define rf2 9
@@ -242,21 +244,23 @@ String errorBuffer = "";
 
 bool testV2cmd = false;
 
-void LedAllOff() {
+void LedAllOff()
+{
   ledcWrite(KLroomCh, 0);
   ledcWrite(stairsCh, 0);
   ledcWrite(livingCh, 0);
   ledcWrite(diningCh, 0);
   ledcWrite(kitchenCh, 0);
 
-  Blynk.virtualWrite(V1, 0);  // KL ROOM
-  Blynk.virtualWrite(V6, 0);  // Dining
-  Blynk.virtualWrite(V7, 0);  // Kitchin
-  Blynk.virtualWrite(V4, 0);  // Stairs
-  Blynk.virtualWrite(V5, 0);  // Living
+  Blynk.virtualWrite(V1, 0); // KL ROOM
+  Blynk.virtualWrite(V6, 0); // Dining
+  Blynk.virtualWrite(V7, 0); // Kitchin
+  Blynk.virtualWrite(V4, 0); // Stairs
+  Blynk.virtualWrite(V5, 0); // Living
 }
 
-void setup() {
+void setup()
+{
   // Initialize Watchdog Timer
   esp_task_wdt_init(WDT_TIMEOUT, true); // Enable panic so it reboots on timeout
   esp_task_wdt_add(NULL);               // Add current thread (loop task) to WDT
@@ -268,12 +272,13 @@ void setup() {
   bool wifiConnected = false;
 
   bool displayInitialized = display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
-  if (!displayInitialized) {
+  if (!displayInitialized)
+  {
     Serial.println(F("⚠️ SSD1306 allocation failed. Continuing without display..."));
   }
 
   rgbLed.begin();
-  rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0));  // Red ON
+  rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0)); // Red ON
   rgbLed.show();
 
   // --- OLED WiFi Connecting Animation ---
@@ -289,19 +294,22 @@ void setup() {
   display.print(F("Connecting WiFi"));
   display.display();
 
-
   int dotX = 115;
-  while (millis() - wifiStart < 10000) {
-    if (WiFi.status() == WL_CONNECTED) {
+  while (millis() - wifiStart < 10000)
+  {
+    if (WiFi.status() == WL_CONNECTED)
+    {
       wifiConnected = true;
       break;
     }
 
-    if (displayInitialized) {
-      display.fillRect(dotX, 25, 2, 2, SSD1306_WHITE);  // animation dots
+    if (displayInitialized)
+    {
+      display.fillRect(dotX, 25, 2, 2, SSD1306_WHITE); // animation dots
       display.display();
       dotX += 2;
-      if (dotX > 125) dotX = 115;
+      if (dotX > 125)
+        dotX = 115;
     }
 
     delay(250);
@@ -309,24 +317,29 @@ void setup() {
   }
 
   // --- WiFi Connection Result ---
-  if (wifiConnected) {
+  if (wifiConnected)
+  {
     Serial.println("✅ WiFi Connected!");
-    if (displayInitialized) {
+    if (displayInitialized)
+    {
       display.setCursor(25, 35);
       display.print(F("WiFi Connected!"));
       display.display();
     }
     Blynk.config(auth);
     Blynk.connect();
-  } else {
+  }
+  else
+  {
     Serial.println("❌ WiFi Failed. Retrying in loop.");
-    if (displayInitialized) {
+    if (displayInitialized)
+    {
       display.setCursor(10, 35);
       display.print(F("Failed. Retrying..."));
       display.display();
     }
-    WiFi.begin(ssid, pass);  // retry automatically
-    Blynk.config(auth);      // non-blocking
+    WiFi.begin(ssid, pass); // retry automatically
+    Blynk.config(auth);     // non-blocking
   }
 
   // --- Continue other hardware init ---
@@ -340,7 +353,7 @@ void setup() {
   dht3.begin();
   Blynk.run();
 
-  rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 200));  // Blue ON
+  rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 200)); // Blue ON
   rgbLed.show();
 
   esp_reset_reason_t reason = esp_reset_reason();
@@ -348,23 +361,27 @@ void setup() {
   Blynk.virtualWrite(V2, "System Starting...");
 
   pinMode(espEnable, INPUT);
-  while (!digitalRead(espEnable)) {
+  while (!digitalRead(espEnable))
+  {
     Blynk.virtualWrite(V2, "Connect ESP32 to main board");
-    rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0));  // Red ON
+    rgbLed.setPixelColor(0, rgbLed.Color(255, 0, 0)); // Red ON
     rgbLed.show();
     delay(200);
-    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));  // Red OFF
+    rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0)); // Red OFF
     rgbLed.show();
     delay(2000);
-    
+
     esp_task_wdt_reset(); // Feed the dog while waiting for hardware connection
   }
 
   // ------------------------------------------------------------------- SD card --------------------------------------------
   spi.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-  if (!SD.begin(SD_CS, spi)) {
+  if (!SD.begin(SD_CS, spi))
+  {
     Blynk.virtualWrite(V2, "Card Mount Failed");
-  } else {
+  }
+  else
+  {
     Blynk.virtualWrite(V2, "SD card initialized successfully!");
   }
 
@@ -378,40 +395,57 @@ void setup() {
   delay(200);
 
   int savedRain = GetSettings("rain");
-  if (savedRain > 0) {
+  if (savedRain > 0)
+  {
     rainThreshold = savedRain;
   }
   Blynk.virtualWrite(V2, "Rain Limit: " + String(rainThreshold));
   delay(100);
 
-  if (GetSettings("Xmode") == HIGH) {
+  if (GetSettings("Xmode") == HIGH)
+  {
     Blynk.virtualWrite(V2, "X on");
-  } else {
+    Local_x = true;
+  }
+  else
+  {
     Blynk.virtualWrite(V2, "X off");
-    xX = false;
+    Local_x = false;
   }
   delay(100);
 
-  if (GetSettings("AutoLight") == HIGH) {
+  if (GetSettings("AutoLight") == HIGH)
+  {
     Blynk.virtualWrite(V2, "Auto Lights on");
-  } else {
+    Local_autoLight = true;
+  }
+  else
+  {
     Blynk.virtualWrite(V2, "Auto Lights off");
     Local_autoLight = false;
   }
   delay(100);
 
-  if (GetSettings("m_AutoLight") == HIGH) {
+  if (GetSettings("m_AutoLight") == HIGH)
+  {
     Blynk.virtualWrite(V2, "Mid Night Auto Lights on");
-  } else {
+    Local_m_autoLight = true;
+  }
+  else
+  {
     Blynk.virtualWrite(V2, "Mid Night Auto Lights off");
     Local_m_autoLight = false;
   }
 
   delay(100);
 
-  if (GetSettings("topLightAuto") == HIGH) {
+  if (GetSettings("topLightAuto") == HIGH)
+  {
     Blynk.virtualWrite(V2, "Top Light Schedule Enabled");
-  } else {
+    Local_topLightAuto = true;
+  }
+  else
+  {
     Blynk.virtualWrite(V2, "Top Light Schedule Disabled");
     Local_topLightAuto = false;
   }
@@ -420,7 +454,8 @@ void setup() {
 
   //------------------------------------------------------------------------------------------------------------------------
 
-  if (!testMode) {
+  if (!testMode)
+  {
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
@@ -432,7 +467,8 @@ void setup() {
     display.setCursor(20, 20);
     display.println("System Loading...");
 
-    for (int i = 0; i < 122; i++) {
+    for (int i = 0; i < 122; i++)
+    {
       display.setCursor(i, 40);
       display.println("I");
       display.display();
@@ -494,7 +530,8 @@ void setup() {
   LedAllOff();
 
   // --- Final display screen ---
-  if (!testMode) {
+  if (!testMode)
+  {
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
@@ -511,7 +548,7 @@ void setup() {
     display.display();
     Serial_Read();
     esp_task_wdt_reset(); // Feed the dog before the long final delay
-    delay(5000);
+    delay(4000);
     rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 0));
     rgbLed.show();
     display.clearDisplay();
@@ -530,98 +567,119 @@ void setup() {
   delay(100);
 }
 
-
-void loop() {  //===================================================================================== loop start ===================================================================
-  esp_task_wdt_reset(); // Reset the watchdog timer at the start of every loop
-
+void loop()
+{ //===================================================================================== loop start ===================================================================
+  esp_task_wdt_reset();
   timeDateUpdate(); // Sync NTP time and update Hours, MiN, and timestamp variables
 
   resetCounter++;
 
-
-  Serial_Read();   // read promini serial data
-  x_Mode();        // the room x mode
-  Securty_mode();  // activate with button, all pir's working at same time, alarm lock off
-  readTemp();      // read all the temp sensors and filter output values
-                   //autoSecurty();                   // pir sensors at out side automatic work and notifications
+  Serial_Read();  // read promini serial data
+  x_Mode();       // the room x mode
+  Securty_mode(); // activate with button, all pir's working at same time, alarm lock off
+  readTemp();     // read all the temp sensors and filter output values
+                  // autoSecurty();                   // pir sensors at out side automatic work and notifications
   irSwitch();
   TopLight(); // control top floor light
 
-  if (MiN != lastMinute) {  // write data in SD card every 1 Min
+  if (MiN != lastMinute)
+  { // write data in SD card every 1 Min
     lastMinute = MiN;
     DataLog();
     flushErrors();
   }
   //--------------------------------------------------------------
 
-  if (Hours == 17 && !sFlag12) {
-    if (GetSettings("AutoLight") == HIGH) {
+  if (Hours == 17 && !sFlag12)
+  {
+    if (GetSettings("AutoLight") == HIGH)
+    {
       Local_autoLight = true;
-    } else {
+    }
+    else
+    {
       Local_autoLight = false;
     }
 
-    if (GetSettings("m_AutoLight") == HIGH) {
+    if (GetSettings("m_AutoLight") == HIGH)
+    {
       Local_m_autoLight = true;
-    } else {
+    }
+    else
+    {
       Local_m_autoLight = false;
     }
     sFlag12 = true;
   }
 
-  if (Hours == 18 && sFlag12) {
+  if (Hours == 18 && sFlag12)
+  {
     sFlag12 = false;
   }
 
   //------------------------------------------------------------
 
-  if (Hours == 1 && !sFlag11) {
-    if (GetSettings("Xmode") == HIGH) {
-      xX = true;
+  if (Hours == 1 && !sFlag11)
+  {
+    if (GetSettings("Xmode") == HIGH)
+    {
+      Local_x = true;
+    }
+    else
+    {
+      Local_x = false;
     }
     sFlag11 = true;
   }
 
-  if (Hours == 7 && sFlag11) {
-    xX = false;
+  if (Hours == 7 && sFlag11)
+  {
+    Local_x = false;
     sFlag11 = false;
   }
 
   //-------------------------------------------------------------
 
-  if (Local_autoLight) {
-    autoLight();  // automatic turn on lights when house main power off at 6PM to 10PM
+  if (Local_autoLight)
+  {
+    autoLight(); // automatic turn on lights when house main power off at 6PM to 10PM
   }
 
-  if (Local_m_autoLight) {
-    midNightAutoLights();  // automatic turn on lights when house main power is off at 10PM to 5AM (only when inside pir detects someone)
+  if (Local_m_autoLight)
+  {
+    midNightAutoLights(); // automatic turn on lights when house main power is off at 10PM to 5AM (only when inside pir detects someone)
   }
 
-  if (safetyMode) {
-    saftySys();  // checking all the temp sensors and voltage sensors if any problems send notification and cmd lines
-    if (flag8) {
+  if (safetyMode)
+  {
+    saftySys(); // checking all the temp sensors and voltage sensors if any problems send notification and cmd lines
+    if (flag8)
+    {
       Blynk.virtualWrite(V2, "Safety System Online");
       flag8 = false;
     }
-
-  } else {
-    if (!flag8) {
+  }
+  else
+  {
+    if (!flag8)
+    {
       Blynk.virtualWrite(V2, "Safety System Shut Down!");
       flag8 = true;
     }
   }
 
-
   //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-  if (VoltSensor < 50) {
-    //Blynk.logEvent("volts_amps_sensors", "Main 230v Power Supply is off"); //------------ enable this after all done
+  if (VoltSensor < 50)
+  {
+    // Blynk.logEvent("volts_amps_sensors", "Main 230v Power Supply is off"); //------------ enable this after all done
     main230Out = true;
-
   }
 
-  else {
-    if (main230Out) {
+  else
+  {
+    if (main230Out)
+    {
       pcf1.digitalWrite(rf1, HIGH);
       pcf1.digitalWrite(rf2, HIGH);
       pcf1.digitalWrite(rf3, HIGH);
@@ -634,76 +692,90 @@ void loop() {  //===============================================================
     }
   }
 
-
   unsigned long currentMillis = millis();
 
-  if (currentMillis - previousMillis >= display_interval) {
+  if (currentMillis - previousMillis >= display_interval)
+  {
     previousMillis = currentMillis;
-    currentDisplay = (currentDisplay + 1) % 2;  // show display count max is 4
+    currentDisplay = (currentDisplay + 1) % 2; // show display count max is 4
   }
 
-  if (testV2cmd) {  // for testing values cmd printing command for active "test"
-    //Blynk.virtualWrite(V2, "rain count:");
-    //Blynk.virtualWrite(V2, rainCounter);
+  if (testV2cmd)
+  { // for testing values cmd printing command for active "test"
+    // Blynk.virtualWrite(V2, "rain count:");
+    // Blynk.virtualWrite(V2, rainCounter);
     Blynk.virtualWrite(V2, "test");
     midNightAutoLights();
   }
 
-  if (cmd_rstCount) {
+  if (cmd_rstCount)
+  {
     Blynk.virtualWrite(V2, resetCounter);
   }
 
-  if (cmd_rainSensor) {
+  if (cmd_rainSensor)
+  {
     Blynk.virtualWrite(V2, rainSensor);
   }
 
-  if (cmd_systemAmp) {
+  if (cmd_systemAmp)
+  {
     Blynk.virtualWrite(V2, AmpSensor);
   }
 
-  if (cmd_systemVolt) {
+  if (cmd_systemVolt)
+  {
     Blynk.virtualWrite(V2, batteryVoltage_sys);
   }
 
-  if (cmd_sysTemp) {
+  if (cmd_sysTemp)
+  {
     Blynk.virtualWrite(V2, systemTemp);
   }
 
-  if (cmd_batTemp) {
+  if (cmd_batTemp)
+  {
     Blynk.virtualWrite(V2, batteryTemp);
   }
 
-  if (cmd_testPir1) {
+  if (cmd_testPir1)
+  {
     Blynk.virtualWrite(V2, digitalRead(insidePir));
   }
 
-  if (cmd_testPir2) {
+  if (cmd_testPir2)
+  {
     Blynk.virtualWrite(V2, digitalRead(outsidePir_top));
   }
 
-  if (cmd_time){
+  if (cmd_time)
+  {
     Blynk.virtualWrite(V2, "System Time: " + String(Hours) + ":" + String(MiN) + ":" + String(sec));
   }
 
-
-  if (alarmCutOff) {
+  if (alarmCutOff)
+  {
     pcf1.digitalWrite(alarm, LOW);
   }
 
   connectionCheck();
 
   delay(300);
-}  // ================================================================================================= loop end ==================================================================
+} // ================================================================================================= loop end ==================================================================
 
-
-BLYNK_WRITE(V3) {
-  if (param.asInt()) {
+BLYNK_WRITE(V3)
+{
+  if (param.asInt())
+  {
     SecuMode = true;
     Blynk.virtualWrite(V2, "Securty Mode is on");
-    if (alarmCutOff) {
+    if (alarmCutOff)
+    {
       Blynk.virtualWrite(V2, "Alarm is Locked! (Alarm Off)");
     }
-  } else {
+  }
+  else
+  {
     SecuMode = false;
     Blynk.virtualWrite(V2, "Securty Mode is off");
     alarmCutOff = true;
@@ -725,27 +797,32 @@ BLYNK_WRITE(V3) {
   }
 }
 
-BLYNK_WRITE(V4) {  // stairs
+BLYNK_WRITE(V4)
+{ // stairs
   int val = param.asInt();
   ledcWrite(stairsCh, val);
 }
 
-BLYNK_WRITE(V1) {
-  int val = param.asInt();  // KLroom
+BLYNK_WRITE(V1)
+{
+  int val = param.asInt(); // KLroom
   ledcWrite(KLroomCh, val);
 }
 
-BLYNK_WRITE(V5) {
+BLYNK_WRITE(V5)
+{
   int val = param.asInt();
-  ledcWrite(livingCh, val);  // Living
+  ledcWrite(livingCh, val); // Living
 }
 
-BLYNK_WRITE(V6) {
+BLYNK_WRITE(V6)
+{
   int val = param.asInt();
-  ledcWrite(diningCh, val);  // Dining
+  ledcWrite(diningCh, val); // Dining
 }
 
-BLYNK_WRITE(V7) {
+BLYNK_WRITE(V7)
+{
   int val = param.asInt();
-  ledcWrite(kitchenCh, val);  // Kitchen
+  ledcWrite(kitchenCh, val); // Kitchen
 }
