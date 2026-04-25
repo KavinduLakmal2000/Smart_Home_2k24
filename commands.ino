@@ -245,20 +245,6 @@ BLYNK_WRITE(V2)
     sendFirmwareLog();
   }
 
-  if (cmd == "autoLightOff")
-  {
-    if (pirCounter > 0)
-    {
-      Blynk.virtualWrite(V2, pirCounter);
-      pirCounter = 0;
-      Blynk.virtualWrite(V2, "Auto emergency light off!");
-    }
-    else
-    {
-      Blynk.virtualWrite(V2, "No movement detect!");
-    }
-  }
-
   if (cmd == "about")
   {
     sendAboutInfo();

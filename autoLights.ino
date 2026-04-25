@@ -1,6 +1,6 @@
 void autoLight() {
 
-  if (Hours >= 18 && Hours <= 23 && VoltSensor < 210) { 
+  if (Hours >= 18 && Hours <= 23 && VoltSensor < 180) { 
     if (!autolightTriggered) {
 
       autolightEnable = true;
