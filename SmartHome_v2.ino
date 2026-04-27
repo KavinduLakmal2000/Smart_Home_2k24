@@ -6,8 +6,8 @@
 // OLED Display - ox3c
 
 ///////////////////////////////////////
-const char *SoftVer = "Firmware 3.1.7";
-const char *whatsNew = "bug fixed, new features added, performance improved, and more!";
+const char *SoftVer = "Firmware 3.1.8";
+const char *whatsNew = "new alarm system and new external watchdog system added";
 ////////////////////TEST MODE///////////////////
 bool testMode = false;
 bool safetyMode = true;
@@ -115,7 +115,6 @@ bool ledState = false;
 bool SecuMode = false;
 int pirCount1 = 0;
 int pirCounter = 0;
-int alarmCutOff = true;
 bool cmd_systemVolt = false;
 bool cmd_sysTemp = false;
 bool cmd_batTemp = false;
@@ -222,7 +221,6 @@ bool cmd_testPir2 = false;
 #define insidePir 13      // esp pin
 #define outsidePir_top 12 // esp pin
 #define outsidePir_bot 11 // esp pin
-#define alarm 2           // pcf
 #define fan 3             // pcf pin
 #define lightninProtect 6 // pcf
 #define pwrCut 7          // pcf
@@ -498,7 +496,6 @@ void setup()
   pinMode(insidePir, INPUT);
   pinMode(outsidePir_top, INPUT);
 
-  pcf1.pinMode(alarm, OUTPUT);
   pcf1.pinMode(rf1, OUTPUT);
   pcf1.pinMode(rf2, OUTPUT);
   pcf1.pinMode(rf3, OUTPUT);
@@ -514,7 +511,6 @@ void setup()
   pcf1.digitalWrite(lightninProtect, HIGH);
   pcf1.digitalWrite(pwrCut, HIGH);
   pcf1.digitalWrite(fan, LOW);
-  pcf1.digitalWrite(alarm, LOW);
   pcf1.digitalWrite(topLightPin, LOW);
 
   LedAllOff();
@@ -573,10 +569,10 @@ void loop()
   timeDateUpdate(); // Sync NTP time and update Hours, MiN, and timestamp variables
 
   resetCounter++;
-
+  Serial.println("#espheartbeat");
   Serial_Read();  // read promini serial data
   x_Mode();       // the room x mode
-  Securty_mode(); // activate with button, all pir's working at same time, alarm lock off
+  Securty_mode(); // activate with button, all pir's working at same time
   readTemp();     // read all the temp sensors and filter output values
                   // autoSecurty();                   // pir sensors at out side automatic work and notifications
   irSwitch();
@@ -705,7 +701,6 @@ void loop()
     // Blynk.virtualWrite(V2, "rain count:");
     // Blynk.virtualWrite(V2, rainCounter);
     Blynk.virtualWrite(V2, "test");
-    midNightAutoLights();
   }
 
   if (cmd_rstCount)
@@ -753,11 +748,6 @@ void loop()
     Blynk.virtualWrite(V2, "System Time: " + String(Hours) + ":" + String(MiN) + ":" + String(sec));
   }
 
-  if (alarmCutOff)
-  {
-    pcf1.digitalWrite(alarm, LOW);
-  }
-
   connectionCheck();
 
   delay(300);
@@ -769,18 +759,11 @@ BLYNK_WRITE(V3)
   {
     SecuMode = true;
     Blynk.virtualWrite(V2, "Securty Mode is on");
-    if (alarmCutOff)
-    {
-      Blynk.virtualWrite(V2, "Alarm is Locked! (Alarm Off)");
-    }
   }
   else
   {
     SecuMode = false;
     Blynk.virtualWrite(V2, "Securty Mode is off");
-    alarmCutOff = true;
-    pcf1.digitalWrite(alarm, LOW);
-    pcf1.digitalWrite(alarm, LOW);
     pcf1.digitalWrite(rf1, HIGH);
     pcf1.digitalWrite(rf2, HIGH);
     pcf1.digitalWrite(rf3, HIGH);

@@ -4,7 +4,26 @@ BLYNK_WRITE(V2)
 
   if (cmd.startsWith("#"))
   {
-    Serial.print(cmd);
+    Serial.println(cmd);
+    delay(500);
+    if(cmd == "#idle"){
+      Blynk.virtualWrite(V2, "KL idle animation on");
+    }
+    else if(cmd == "#off"){
+      Blynk.virtualWrite(V2, "KL light off");
+    }
+    else if(cmd == "#vu"){
+      Blynk.virtualWrite(V2, "KL VU meter mode");
+    }
+    else if(cmd == "#tail"){
+      Blynk.virtualWrite(V2, "KL tail effect on");
+    }
+    else if(cmd == "#alarmOn"){
+      Blynk.virtualWrite(V2, "Alarm ON");
+    }
+    else if(cmd == "#alarmOff"){
+      Blynk.virtualWrite(V2, "Alarm OFF");
+    }
   }
 
   if (cmd.startsWith("setRain"))
@@ -248,38 +267,6 @@ BLYNK_WRITE(V2)
   if (cmd == "about")
   {
     sendAboutInfo();
-  }
-
-  if (cmd == "almLocOn")
-  {
-    alarmCutOff = true;
-    pcf1.digitalWrite(alarm, LOW);
-    Blynk.virtualWrite(V2, "Alarm Locked!");
-  }
-
-  if (cmd == "almLocOff")
-  {
-    alarmCutOff = false;
-    Blynk.virtualWrite(V2, "Alarm Unlocked!");
-  }
-
-  if (cmd == "almOn")
-  {
-    if (alarmCutOff)
-    {
-      Blynk.virtualWrite(V2, "Alarm is Locked");
-    }
-    else
-    {
-      pcf1.digitalWrite(alarm, HIGH);
-      Blynk.virtualWrite(V2, "Alarm is on");
-    }
-  }
-
-  if (cmd == "almOff")
-  {
-    pcf1.digitalWrite(alarm, LOW);
-    Blynk.virtualWrite(V2, "Alarm is off");
   }
 
   if (cmd == "pwrGon")
@@ -604,8 +591,6 @@ BLYNK_WRITE(V2)
     Blynk.virtualWrite(V2, "-------------------------------------------");
     Blynk.virtualWrite(V2, "p - pir count reset");
     Blynk.virtualWrite(V2, "about - Show about info");
-    Blynk.virtualWrite(V2, "almLocOn / almLocOff - Lock/Unlock alarm");
-    Blynk.virtualWrite(V2, "almOn / almOff - Turn alarm ON/OFF");
     Blynk.virtualWrite(V2, "pwrGon / pwrGoff - Lightning protection ON/OFF");
     Blynk.virtualWrite(V2, "fan - Test fan");
     Blynk.virtualWrite(V2, "reset - Restart ESP32");
@@ -619,5 +604,13 @@ BLYNK_WRITE(V2)
     Blynk.virtualWrite(V2, "AutoLightOn / AutoLightOff - Night time emergency light ON/OFF");
     Blynk.virtualWrite(V2, "MidNightAutoLightOn / MidNightAutoLightOff - Mid night auto light ON/OFF");
     Blynk.virtualWrite(V2, "setTopLightOn / setTopLightOff - Top light schedule ON/OFF");
+    Blynk.virtualWrite(V2, "-------------------------------------------");
+    Blynk.virtualWrite(V2, "# - Send custom command to serial");
+    Blynk.virtualWrite(V2, "#idle - idle animation on KL");
+    Blynk.virtualWrite(V2, "#off - KL light off");
+    Blynk.virtualWrite(V2, "#vu - KL Works as VU meter");
+    Blynk.virtualWrite(V2, "#tail - KL light tail effect");
+    Blynk.virtualWrite(V2, "#alarmOn - alarm on");    
+    Blynk.virtualWrite(V2, "#alarmOff - alarm off");    
   }
 }
